@@ -1,65 +1,135 @@
+"use client";
+
+import React, { useState } from "react";
+import { motion } from "framer-motion";
+import { User, Lock, ArrowRight } from "lucide-react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 
-export default function Home() {
+export default function LandingPage() {
+  const [uid, setUid] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    // TEMPORARY LOGIC: Route based on UID prefix
+    setTimeout(() => {
+      const prefix = uid.charAt(0).toUpperCase();
+      if (prefix === "S") {
+        router.push("/student");
+      } else if (prefix === "T") {
+        router.push("/staff");
+      } else {
+        setLoading(false);
+        alert("Temporary Auth: UID must start with 'S' (Student) or 'T' (Teacher/Staff).");
+      }
+    }, 800);
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
+    <main className="relative min-h-screen bg-[#F5F5F0] flex flex-col lg:flex-row items-center justify-center p-6 lg:p-24 overflow-hidden">
+      
+      {/* --- College Logo --- */}
+      <div className="absolute top-6 left-6 lg:top-10 lg:left-12 z-50">
+        <Image 
+          src="/kkw.png" 
+          alt="KKW College Logo" 
+          width={180} 
+          height={80} 
+          className="w-auto h-12 lg:h-16 object-contain"
           priority
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+      </div>
+
+      {/* --- Left Side: Hero Text --- */}
+      <motion.div 
+        initial={{ opacity: 0, x: -50 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        className="lg:w-1/2 space-y-6 mb-12 lg:mb-0 text-center lg:text-left"
+      >
+        <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold text-slate-800 tracking-tight">
+          Cam<span className="text-[#A78BFA]">Pulse</span>
+        </h1>
+        <p className="text-slate-500 text-lg max-w-md leading-relaxed mx-auto lg:mx-0">
+          The seamless platform for students and staff to coordinate extracurriculars, manage campus events, and sync college life.
+        </p>
+        
+      </motion.div>
+
+      {/* --- Right Side: Neumorphic Sign-In Card --- */}
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.6, delay: 0.2 }}
+        className="w-full max-w-md"
+      >
+        <div className="bg-[#F5F5F0]/80 backdrop-blur-md p-6 sm:p-8 md:p-10 rounded-[2.5rem] md:rounded-[3rem] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60 relative">
+          
+          <div className="text-center mb-10">
+            <h2 className="text-2xl font-bold text-slate-700">Welcome Back</h2>
+            <p className="text-slate-400 text-sm mt-2">Sign in to your pulse account</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-6">
+            {/* UID Input */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">UID / Staff ID</label>
+              <div className="relative">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                  <User size={18} />
+                </div>
+                <input 
+                  type="text"
+                  value={uid}
+                  onChange={(e) => setUid(e.target.value)}
+                  className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 md:py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
+                  placeholder="e.g. S22CE001"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Password Input (Phone Number initially) */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Password</label>
+              <div className="relative">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                  <Lock size={18} />
+                </div>
+                <input 
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 md:py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
+                  placeholder="Enter phone number"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <motion.button 
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              disabled={loading}
+              className="w-full bg-[#A78BFA] text-white font-bold py-3 md:py-4 rounded-full shadow-lg shadow-[#A78BFA]/30 hover:shadow-[#A78BFA]/50 transition-all flex items-center justify-center gap-2 mt-6 md:mt-4"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+              {loading ? "Authenticating..." : "Enter Workspace"}
+              <ArrowRight size={20} />
+            </motion.button>
+          </form>
+
+          {/* Soft Footer Info */}
+          <p className="text-center text-[10px] text-slate-400 mt-8 uppercase tracking-widest leading-loose">
+            Secured by CamPulse Encryption • v2026
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </motion.div>
+    </main>
   );
 }
