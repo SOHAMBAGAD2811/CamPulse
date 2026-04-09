@@ -127,7 +127,7 @@ export default function MenteeManagementPage() {
             <p className="text-center text-slate-500 font-medium py-10">Loading roster...</p>
           ) : filteredMentees.length === 0 ? (
             <p className="text-center text-slate-400 text-sm py-10">No mentees found.</p>
-          ) : filteredMentees.map((mentee) => {
+          ) : filteredMentees.map((mentee: any) => {
             const isActive = selectedId === mentee.id;
             return (
               <motion.button
@@ -245,7 +245,7 @@ export default function MenteeManagementPage() {
                 </h4>
                 
                 <div className="space-y-4">
-                  {activeMentee.timeline.length > 0 ? activeMentee.timeline.map((item) => (
+                  {activeMentee.timeline.length > 0 ? activeMentee.timeline.map((item: any) => (
                     <div key={item.id} className="bg-[#F5F5F0] p-4 rounded-2xl shadow-[6px_6px_12px_rgba(0,0,0,0.04),-6px_-6px_12px_rgba(255,255,255,0.8)] border border-white/60">
                       <div className="flex justify-between items-start gap-2 mb-2">
                         <h5 className="font-bold text-slate-700 text-sm leading-tight">{item.title}</h5>
