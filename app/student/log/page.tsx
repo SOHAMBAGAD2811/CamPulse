@@ -1,284 +1,254 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Check, Clock, X, MapPin, Calendar, FileText, ChevronDown, ChevronUp } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/app/student/supabase";
+import { Save, ArrowLeft, CheckCircle } from "lucide-react";
 
-// --- Mock Data ---
-const mockActivities = [
-  {
-    id: 1,
-    title: "State Level Hackathon 2023",
-    type: "Technical",
-    date: "Oct 12, 2023",
-    location: "Pune University",
-    status: "Approved",
-    cw: true,
-    desc: "Participated in the 48-hour state-level hackathon. Built a campus management application using Next.js and Firebase. Secured 3rd place overall.",
-  },
-  {
-    id: 2,
-    title: "Cultural Fest Volunteer",
-    type: "Extracurricular",
-    date: "Nov 05, 2023",
-    location: "Main Auditorium",
-    status: "Pending",
-    cw: false,
-    desc: "Managed the stage and coordinated with the performers for the annual cultural festival.",
-  },
-  {
-    id: 3,
-    title: "AI/ML Workshop",
-    type: "Seminar",
-    date: "Nov 20, 2023",
-    location: "Computer Dept. Lab 1",
-    status: "Rejected",
-    cw: true,
-    desc: "Attended the 2-day workshop on Neural Networks and Deep Learning by industry experts.",
-  },
-];
+// Helper function for 15-day date constraints
+const getDateConstraints = () => {
+  const today = new Date();
+  const minDate = new Date(today);
+  minDate.setDate(today.getDate() - 15);
+  const maxDate = new Date(today);
+  maxDate.setDate(today.getDate() + 15);
+  const formatDate = (date: Date) => date.toISOString().split('T')[0];
+  return { min: formatDate(minDate), max: formatDate(maxDate), today: formatDate(today) };
+};
 
-export default function TheLogPage() {
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
+export default function LogActivityPage() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [staffList, setStaffList] = useState<{ suid: string; name: string }[]>([]);
+  const [showSuccess, setShowSuccess] = useState(false);
 
-  // Form State
-  const [cwToggle, setCwToggle] = useState(false);
+  const { min, max, today } = getDateConstraints();
 
-  const getStatusConfig = (status: string) => {
-    switch (status) {
-      case "Approved":
-        return { color: "text-emerald-500", bg: "bg-emerald-500/10", icon: <Check size={16} /> };
-      case "Pending":
-        return { color: "text-[#FDBA74]", bg: "bg-[#FDBA74]/10", icon: <Clock size={16} /> };
-      case "Rejected":
-        return { color: "text-rose-500", bg: "bg-rose-500/10", icon: <X size={16} /> };
-      default:
-        return { color: "text-slate-500", bg: "bg-slate-500/10", icon: <FileText size={16} /> };
+  const [formData, setFormData] = useState({
+    title: "",
+    category: "Technical",
+    description: "",
+    fromDate: today,
+    toDate: today,
+    fromTime: "",
+    toTime: "",
+    leave_required: false,
+    suid: "",
+  });
+
+  // Fetch available staff members to populate the Mentor dropdown
+  useEffect(() => {
+    // Protect route: Ensure user is actually a Student
+    async function verifyStudent() {
+      const uid = localStorage.getItem("campuspulse_uid");
+      if (!uid) {
+        router.replace("/");
+        return;
+      }
+      const { data, error } = await supabase.from("students").select("uid").eq("uid", uid).maybeSingle();
+      if (error || !data) {
+        router.replace("/"); // Not found in students table
+      }
+    }
+
+    async function fetchStaff() {
+      const { data } = await supabase.from("staff").select("suid, name");
+      if (data) setStaffList(data);
+    }
+    verifyStudent();
+    fetchStaff();
+  }, [router]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const uid = localStorage.getItem("campuspulse_uid");
+      if (!uid) {
+        router.push("/");
+        return;
+      }
+
+      // Insert new activity into Supabase
+      const { error } = await supabase.from("student_activities").insert([
+        {
+          uid,
+          activity_name: formData.title,
+          type: formData.category,
+          desc: formData.description,
+          from_date: formData.fromDate,
+          to_date: formData.toDate,
+          from_time: formData.fromTime,
+          to_time: formData.toTime,
+          leave_required: formData.leave_required,
+          suid: formData.suid || null,
+          status: "Pending"
+        }
+      ]);
+
+      if (error) throw error;
+      
+      setShowSuccess(true);
+      // Wait 1.5s for the toast to be seen before redirecting
+      setTimeout(() => {
+        router.push("/student");
+      }, 1500);
+    } catch (error: any) {
+      alert("Error logging activity: " + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
-      
-      {/* --- Header --- */}
-      <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="max-w-2xl mx-auto space-y-8 pb-12">
+      {/* Header */}
+      <div className="flex items-center gap-4 mb-8">
+        <button onClick={() => router.back()} className="p-3 rounded-full bg-[#F5F5F0] shadow-[4px_4px_8px_rgba(0,0,0,0.05),-4px_-4px_8px_rgba(255,255,255,0.8)] text-slate-500 hover:text-[#A78BFA] transition-colors">
+          <ArrowLeft size={20} />
+        </button>
         <div>
-          <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-slate-800 tracking-tight">
-            Activity <span className="text-[#A78BFA]">Log</span>
-          </h2>
-          <p className="text-slate-500 mt-2">Track your extracurricular timeline and approvals.</p>
+          <h2 className="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight">Log New Activity</h2>
+          <p className="text-slate-500 text-sm mt-1">Submit your activity details for faculty approval.</p>
+        </div>
+      </div>
+
+      {/* Neumorphic Form */}
+      <motion.form 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        onSubmit={handleSubmit}
+        className="p-6 md:p-8 rounded-[2rem] bg-[#F5F5F0] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60 space-y-6"
+      >
+        {/* Title */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Activity Title</label>
+          <input 
+            type="text" required
+            value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})}
+            className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none"
+            placeholder="e.g. National Hackathon 2026"
+          />
+        </div>
+        
+        {/* Category & Mentor */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Category</label>
+            <select 
+              value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}
+              className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none appearance-none cursor-pointer"
+            >
+              <option>Technical</option>
+              <option>Cultural</option>
+              <option>Sports</option>
+              <option>Workshop/Seminar</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Faculty Mentor</label>
+            <select 
+              required value={formData.suid} onChange={e => setFormData({...formData, suid: e.target.value})}
+              className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none appearance-none cursor-pointer"
+            >
+              <option value="" disabled>Select Mentor</option>
+              {staffList.map(staff => (
+                <option key={staff.suid} value={staff.suid}>{staff.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Input: Date Range */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">From Date</label>
+            <input 
+              type="date" required
+              min={min} max={max}
+              value={formData.fromDate} onChange={e => setFormData({...formData, fromDate: e.target.value})}
+              className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">To Date</label>
+            <input 
+              type="date" required
+              min={min} max={max}
+              value={formData.toDate} onChange={e => setFormData({...formData, toDate: e.target.value})}
+              className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none"
+            />
+          </div>
+        </div>
+
+        {/* Input: Time Range */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">From Time</label>
+            <input 
+              type="time" required
+              value={formData.fromTime} onChange={e => setFormData({...formData, fromTime: e.target.value})}
+              className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">To Time</label>
+            <input 
+              type="time" required
+              value={formData.toTime} onChange={e => setFormData({...formData, toTime: e.target.value})}
+              className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none"
+            />
+          </div>
+        </div>
+
+        {/* Description */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Description / Outcomes</label>
+          <textarea 
+            required rows={3}
+            value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}
+            className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none"
+            placeholder="Briefly describe the activity..."
+          />
+        </div>
+
+        {/* Leave Required Checkbox */}
+        <div className="flex items-center gap-3 ml-4 pt-2">
+          <input 
+            type="checkbox" id="leave"
+            checked={formData.leave_required} onChange={e => setFormData({...formData, leave_required: e.target.checked})}
+            className="w-5 h-5 accent-[#A78BFA] bg-[#F5F5F0] rounded outline-none cursor-pointer"
+          />
+          <label htmlFor="leave" className="text-sm font-medium text-slate-600 cursor-pointer">Requires Attendance Leave</label>
         </div>
 
         <motion.button 
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => setIsSheetOpen(true)}
-          className="bg-[#A78BFA] text-white px-6 py-3 md:py-3 rounded-full font-semibold shadow-lg shadow-[#A78BFA]/30 hover:shadow-[#A78BFA]/50 transition-all flex items-center justify-center md:justify-start gap-2 w-full md:w-auto mt-4 md:mt-0"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          disabled={loading}
+          type="submit"
+          className="w-full bg-[#A78BFA] text-white font-bold py-4 rounded-full shadow-lg shadow-[#A78BFA]/30 hover:shadow-[#A78BFA]/50 transition-all flex items-center justify-center gap-2 mt-4"
         >
-          <Plus size={20} />
-          Log New Activity
+          <Save size={20} />
+          {loading ? "Saving..." : "Submit Activity"}
         </motion.button>
-      </div>
+      </motion.form>
 
-      {/* --- Vertical Timeline Feed --- */}
-      <div className="relative border-l-2 border-[#A78BFA]/20 ml-4 md:ml-6 space-y-8 pb-12">
-        {mockActivities.map((activity) => {
-          const isExpanded = expandedId === activity.id;
-          const statusConfig = getStatusConfig(activity.status);
-
-          return (
-            <motion.div 
-              layout
-              key={activity.id} 
-              className="relative pl-8 md:pl-12"
-            >
-              {/* Timeline Dot */}
-              <div className={`absolute -left-[11px] top-6 w-5 h-5 rounded-full border-4 border-[#F5F5F0] ${statusConfig.bg} flex items-center justify-center shadow-sm`}>
-                <div className={`w-2 h-2 rounded-full bg-current ${statusConfig.color}`} />
-              </div>
-
-              {/* Neumorphic Card */}
-              <motion.div 
-                layout
-                onClick={() => setExpandedId(isExpanded ? null : activity.id)}
-                className="bg-[#F5F5F0] p-5 md:p-6 rounded-2xl md:rounded-3xl shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60 cursor-pointer hover:shadow-[12px_12px_20px_rgba(0,0,0,0.06),-12px_-12px_20px_rgba(255,255,255,0.9)] transition-shadow"
-              >
-                <motion.div layout className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1 ${statusConfig.bg} ${statusConfig.color}`}>
-                        {statusConfig.icon}
-                        {activity.status}
-                      </span>
-                      {activity.cw && (
-                         <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-200/50 text-slate-500">
-                           CW Requested
-                         </span>
-                      )}
-                    </div>
-                    <h3 className="text-lg md:text-xl font-bold text-slate-700">{activity.title}</h3>
-                    <p className="text-sm font-medium text-[#A78BFA] mt-1">{activity.type}</p>
-                  </div>
-
-                  <div className="flex items-center gap-4 text-slate-400 text-sm">
-                    <div className="flex items-center gap-1">
-                      <Calendar size={14} />
-                      {activity.date}
-                    </div>
-                    <div className="w-8 h-8 rounded-full bg-[#F5F5F0] shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] flex items-center justify-center text-slate-400">
-                      {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Expandable Description */}
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="pt-6 mt-6 border-t border-slate-200/50">
-                        <div className="flex items-center gap-2 text-slate-500 text-sm mb-4 font-medium">
-                          <MapPin size={16} className="text-[#FDBA74]" />
-                          {activity.location}
-                        </div>
-                        <p className="text-slate-600 leading-relaxed">
-                          {activity.desc}
-                        </p>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            </motion.div>
-          );
-        })}
-      </div>
-
-      {/* --- Slide-Over Form Sheet --- */}
+      {/* Success Toast Notification */}
       <AnimatePresence>
-        {isSheetOpen && (
-          <>
-            {/* Backdrop */}
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsSheetOpen(false)}
-              className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50"
-            />
-
-            {/* Sheet */}
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-[#F5F5F0] shadow-2xl z-50 overflow-y-auto border-l border-white/60"
-            >
-              <div className="p-6 md:p-8">
-                <div className="flex items-center justify-between mb-8">
-                  <h2 className="text-2xl font-bold text-slate-800">Log Activity</h2>
-                  <button 
-                    onClick={() => setIsSheetOpen(false)}
-                    className="w-10 h-10 rounded-full bg-[#F5F5F0] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] flex items-center justify-center text-slate-500 hover:text-rose-500 transition-colors"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-
-                <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); setIsSheetOpen(false); }}>
-                  
-                  {/* Input: Name */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Activity Name</label>
-                    <input 
-                      type="text"
-                      className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
-                      placeholder="e.g., TechFest 2024"
-                    />
-                  </div>
-
-                  {/* Input: Type & Date row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Type</label>
-                      <select className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none appearance-none cursor-pointer">
-                        <option>Technical</option>
-                        <option>Cultural</option>
-                        <option>Sports</option>
-                        <option>Seminar</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Date</label>
-                      <input 
-                        type="date"
-                        className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Input: Location */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Location</label>
-                    <input 
-                      type="text"
-                      className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
-                      placeholder="Where did this happen?"
-                    />
-                  </div>
-
-                  {/* Toggle: CW / Leave Request */}
-                  <div className="flex items-center justify-between bg-[#F5F5F0] p-6 rounded-3xl shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60">
-                    <div>
-                      <p className="font-bold text-slate-700">Request Leave (CW)</p>
-                      <p className="text-xs text-slate-400 mt-1">Requires mentor approval</p>
-                    </div>
-                    {/* Custom Soft Toggle */}
-                    <div 
-                      onClick={() => setCwToggle(!cwToggle)}
-                      className={`w-14 h-8 rounded-full flex items-center p-1 cursor-pointer transition-colors duration-300 shadow-[inset_2px_2px_4px_rgba(0,0,0,0.1)] ${cwToggle ? 'bg-[#A78BFA]' : 'bg-slate-200'}`}
-                    >
-                      <motion.div 
-                        layout 
-                        className="w-6 h-6 bg-white rounded-full shadow-sm"
-                        animate={{ x: cwToggle ? 24 : 0 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Input: Description */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Description / Role</label>
-                    <textarea 
-                      rows={4}
-                      className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-3xl py-4 px-6 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none resize-none"
-                      placeholder="Briefly explain your learnings or role..."
-                    />
-                  </div>
-
-                  <motion.button 
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    type="submit"
-                    className="w-full bg-[#A78BFA] text-white font-bold py-4 rounded-full shadow-lg shadow-[#A78BFA]/30 hover:shadow-[#A78BFA]/50 transition-all flex items-center justify-center gap-2 mt-8"
-                  >
-                    Submit for Review
-                  </motion.button>
-                </form>
-              </div>
-            </motion.div>
-          </>
+        {showSuccess && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="fixed bottom-6 right-6 bg-[#F5F5F0] text-slate-700 px-6 py-4 rounded-2xl shadow-[8px_8px_16px_rgba(0,0,0,0.1),-8px_-8px_16px_rgba(255,255,255,0.9)] border border-white/60 flex items-center gap-3 font-bold z-50"
+          >
+            <CheckCircle size={24} className="text-emerald-500" />
+            Activity logged
+          </motion.div>
         )}
       </AnimatePresence>
-
     </div>
   );
 }

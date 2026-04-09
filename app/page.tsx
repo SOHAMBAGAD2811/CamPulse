@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { User, Lock, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { supabase } from "@/app/student/supabase";
 
 export default function LandingPage() {
   const [uid, setUid] = useState("");
@@ -12,22 +13,57 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
+  // Set browser tab title for the login page
+  useEffect(() => {
+    document.title = "Welcome - CamPulse";
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    // TEMPORARY LOGIC: Route based on UID prefix
-    setTimeout(() => {
-      const prefix = uid.charAt(0).toUpperCase();
-      if (prefix === "S") {
-        router.push("/student");
-      } else if (prefix === "T") {
-        router.push("/staff");
-      } else {
-        setLoading(false);
-        alert("Temporary Auth: UID must start with 'S' (Student) or 'T' (Teacher/Staff).");
+    try {
+      const normalizedId = uid.trim().toUpperCase();
+
+      // 1. Check students table first
+      const { data: student, error: studentError } = await supabase.from("students").select("uid, password").ilike("uid", normalizedId).maybeSingle();
+      if (studentError) {
+        console.error("Student query error:", studentError.message);
+        alert(`DB Error (students): ${studentError.message}`);
+        return;
       }
-    }, 800);
+      
+      if (student) {
+        if (student.password && student.password !== password) {
+          alert("Invalid password! Please try again.");
+          return;
+        }
+        localStorage.setItem("campuspulse_uid", student.uid);
+        router.push("/student");
+        return;
+      }
+      
+      // 2. If not a student, check staff table
+      const { data: staff, error: staffError } = await supabase.from("staff").select("suid").ilike("suid", normalizedId).maybeSingle();
+      if (staffError) {
+        console.error("Staff query error:", staffError.message);
+        alert(`DB Error (staff): ${staffError.message}`);
+        return;
+      }
+      
+      if (staff) {
+        localStorage.setItem("campuspulse_uid", staff.suid);
+        router.push("/staff");
+        return;
+      }
+
+      alert("User not found! Please ensure your UID/Staff ID exists in the database.");
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("An error occurred during authentication.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -88,13 +124,13 @@ export default function LandingPage() {
                   value={uid}
                   onChange={(e) => setUid(e.target.value)}
                   className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 md:py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
-                  placeholder="e.g. S22CE001"
+                  placeholder="e.g. 322CE001 or E12345"
                   required
                 />
               </div>
             </div>
 
-            {/* Password Input (Phone Number initially) */}
+            {/* Password Input */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Password</label>
               <div className="relative">
@@ -106,7 +142,7 @@ export default function LandingPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 md:py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
-                  placeholder="Enter phone number"
+                  placeholder="Enter password"
                   required
                 />
               </div>

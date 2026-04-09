@@ -1,51 +1,79 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, XCircle, Clock, MapPin, Calendar, FileText, UserCircle, Send, MessageSquare } from "lucide-react";
-
-// --- Mock Data ---
-const initialRequests = [
-  {
-    id: 1,
-    studentName: "Soham Patil",
-    uid: "S22CE001",
-    title: "State Level Hackathon 2023",
-    type: "Technical",
-    date: "Oct 12 - Oct 14, 2023",
-    location: "Pune University",
-    desc: "Requesting 2 days of CW to participate in the 48-hour state-level hackathon. Our team got selected for the final round.",
-  },
-  {
-    id: 2,
-    studentName: "Priya Desai",
-    uid: "S22CE032",
-    title: "Inter-college Debate",
-    type: "Extracurricular",
-    date: "Oct 15, 2023",
-    location: "Main Auditorium",
-    desc: "Representing the college debate team in the annual inter-college competition. Need attendance for the morning sessions.",
-  },
-  {
-    id: 3,
-    studentName: "Karan Mehta",
-    uid: "S22CE061",
-    title: "AI/ML Workshop",
-    type: "Seminar",
-    date: "Oct 18, 2023",
-    location: "Tech Hub, Mumbai",
-    desc: "Attending an advanced workshop on deep learning architectures organized by industry experts.",
-  }
-];
+import { supabase } from "@/app/student/supabase";
 
 export default function PriorityQueuePage() {
-  const [requests, setRequests] = useState(initialRequests);
+  const [requests, setRequests] = useState<any[]>([]);
   const [feedbacks, setFeedbacks] = useState<{ [key: number]: string }>({});
+  const [loading, setLoading] = useState(true);
 
-  const handleAction = (id: number, action: "approve" | "reject") => {
-    // In a real app, this would trigger an API call to update the DB.
-    // For now, we simply remove the item from the queue to demonstrate the workflow.
-    setRequests((prev) => prev.filter((req) => req.id !== id));
+  useEffect(() => {
+    async function fetchPendingRequests() {
+      const suid = localStorage.getItem("campuspulse_uid");
+      if (!suid) return;
+
+      // Fetch pending activities assigned to this mentor
+      const { data: activities, error } = await supabase
+        .from("student_activities")
+        .select("*")
+        .eq("suid", suid)
+        .eq("status", "Pending")
+        .order("created_at", { ascending: true }); // Oldest first
+
+      if (activities && activities.length > 0) {
+        // Fetch student names for the UIDs
+        const uids = [...new Set(activities.map((a: any) => a.uid))];
+        const { data: students } = await supabase
+          .from("students")
+          .select("uid, name")
+          .in("uid", uids);
+
+        // Create a quick lookup dictionary for student names
+        const studentMap = (students || []).reduce((acc: any, curr: any) => {
+          acc[curr.uid] = curr.name;
+          return acc;
+        }, {});
+
+        // Map the data to match our UI
+        const mapped = activities.map((act: any) => ({
+          id: act.id,
+          uid: act.uid,
+          studentName: studentMap[act.uid] || "Unknown Student",
+          title: act.activity_name,
+          type: act.type,
+          date: `${act.from_date}${act.to_date !== act.from_date ? ` to ${act.to_date}` : ""}`,
+          location: act.leave_required ? "Requires Attendance Leave" : "No Leave Required",
+          desc: act.desc || "No description provided.",
+        }));
+        setRequests(mapped);
+      }
+      setLoading(false);
+    }
+    
+    fetchPendingRequests();
+  }, []);
+
+  const handleAction = async (id: number, action: "approve" | "reject") => {
+    const status = action === "approve" ? "Approved" : "Rejected";
+    const feedback = feedbacks[id] || null;
+
+    try {
+      // 1. Update the database
+      const { error } = await supabase
+        .from("student_activities")
+        .update({ status, feedback })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      // 2. Remove the item from the local UI queue
+      setRequests((prev) => prev.filter((req) => req.id !== id));
+    } catch (error: any) {
+      alert("Error updating request: " + error.message);
+    }
   };
 
   const handleFeedbackChange = (id: number, value: string) => {
@@ -66,14 +94,18 @@ export default function PriorityQueuePage() {
         
         <div className="flex items-center gap-2 bg-[#F5F5F0] px-5 py-3 rounded-full shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] border border-white/60">
           <Clock size={18} className="text-[#FDBA74]" />
-          <span className="font-bold text-slate-700">{requests.length} Pending</span>
+          <span className="font-bold text-slate-700">{loading ? "..." : requests.length} Pending</span>
         </div>
       </div>
 
       {/* --- Queue List --- */}
       <div className="space-y-8">
         <AnimatePresence>
-          {requests.length === 0 ? (
+          {loading ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-10">
+              <p className="text-slate-500 font-medium">Loading pending requests...</p>
+            </motion.div>
+          ) : requests.length === 0 ? (
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -108,15 +140,14 @@ export default function PriorityQueuePage() {
                       <p className="text-xs font-medium text-slate-400">{req.uid}</p>
                     </div>
                   </div>
-                  <div className="px-3 py-1 rounded-full bg-[#FDBA74]/10 text-[#FDBA74] text-xs font-bold uppercase tracking-wider self-start sm:self-auto border border-[#FDBA74]/20">
-                    Requires Action
-                  </div>
                 </div>
 
                 {/* Card Body: Event Details */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-1 gap-2">
                     <h3 className="text-xl font-bold text-slate-700 mb-1">{req.title}</h3>
+                    </div>
                     <p className="text-sm font-medium text-[#60A5FA] mb-4">{req.type}</p>
                     
                     <div className="space-y-2 text-sm text-slate-500 font-medium">

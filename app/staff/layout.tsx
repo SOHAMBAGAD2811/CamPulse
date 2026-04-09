@@ -1,13 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, CheckSquare, Users, BookOpen, FileText, UserCircle, LogOut, ChevronLeft } from "lucide-react";
 import { motion } from "framer-motion";
+import { supabase } from "@/app/student/supabase";
 
 export default function StaffLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Staff specific navigation
@@ -19,6 +21,40 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
     { name: "Reports", path: "/staff/reports", icon: FileText },
     { name: "Profile", path: "/staff/profile", icon: UserCircle },
   ];
+
+  // Update browser tab title dynamically based on the current route
+  useEffect(() => {
+    const titles: Record<string, string> = {
+      "/staff": "Command Center - CampusPulse",
+      "/staff/approvals": "Priority Queue - CampusPulse",
+      "/staff/mentees": "Mentees - CampusPulse",
+      "/staff/log": "My Log - CampusPulse",
+      "/staff/reports": "Reports - CampusPulse",
+      "/staff/profile": "Profile - CampusPulse",
+    };
+    
+    document.title = titles[pathname] || "CampusPulse Staff";
+  }, [pathname]);
+
+  // Role-based security check
+  useEffect(() => {
+    const checkAuth = async () => {
+      const uid = localStorage.getItem('campuspulse_uid');
+      if (!uid) {
+        router.replace('/');
+        return;
+      }
+      const { data, error } = await supabase
+        .from('staff')
+        .select('suid')
+        .eq('suid', uid)
+        .single();
+      if (error || !data) {
+        router.replace('/');
+      }
+    };
+    checkAuth();
+  }, [router]);
 
   return (
     <div className="h-screen bg-[#F5F5F0] flex flex-col md:flex-row font-sans text-slate-800 overflow-hidden">
@@ -85,6 +121,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
+              onClick={() => localStorage.removeItem("campuspulse_uid")}
               className={`w-full flex items-center justify-center ${isCollapsed ? '' : 'gap-2 px-4'} py-3 rounded-2xl text-slate-500 bg-[#F5F5F0] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] hover:text-red-400 transition-colors`}
               title={isCollapsed ? "Sign Out" : undefined}
             >

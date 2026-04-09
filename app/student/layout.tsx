@@ -1,13 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, ListTodo, Users, UserCircle, LogOut, ChevronLeft } from "lucide-react";
 import { motion } from "framer-motion";
+import { supabase } from "@/app/student/supabase";
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const navItems = [
@@ -16,6 +18,37 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
     { name: "Mentorship", path: "/student/mentorship", icon: Users },
     { name: "Profile", path: "/student/profile", icon: UserCircle },
   ];
+  // Staff specific navigation
+  useEffect(() => {
+      const titles: Record<string, string> = {
+        "/student": "Command Center - CampusPulse",
+        "/student/log": "My Log - CampusPulse",
+        "/student/mentorship": "Mentorship - CampusPulse",
+        "/student/profile": "Profile - CampusPulse",
+      };
+      
+      document.title = titles[pathname] || "CampusPulse Staff";
+    }, [pathname]);
+
+  // Role-based security check
+  useEffect(() => {
+    const checkAuth = async () => {
+      const uid = localStorage.getItem('campuspulse_uid');
+      if (!uid) {
+        router.replace('/');
+        return;
+      }
+      const { data, error } = await supabase
+        .from('students')
+        .select('uid')
+        .eq('uid', uid)
+        .single();
+      if (error || !data) {
+        router.replace('/');
+      }
+    };
+    checkAuth();
+  }, [router]);
 
   return (
     <div className="h-screen bg-[#F5F5F0] flex flex-col md:flex-row font-sans text-slate-800 overflow-hidden">
@@ -76,6 +109,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
+              onClick={() => localStorage.removeItem("campuspulse_uid")}
               className={`w-full flex items-center justify-center ${isCollapsed ? '' : 'gap-2 px-4'} py-3 rounded-2xl text-slate-500 bg-[#F5F5F0] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] hover:text-red-400 transition-colors`}
               title={isCollapsed ? "Sign Out" : undefined}
             >

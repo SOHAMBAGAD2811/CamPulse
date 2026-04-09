@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
 import React from "react";
 import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "CamPulse",
+  description: "The seamless platform for students and staff to coordinate extracurriculars.",
+};
 
 export default function RootLayout({
   children,

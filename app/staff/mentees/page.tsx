@@ -1,59 +1,98 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, UserCircle, Mail, Phone, PieChart, Clock, Award, CheckCircle, XCircle } from "lucide-react";
-
-// --- Mock Data ---
-const menteesDatabase = [
-  {
-    id: "S22CE001",
-    name: "Soham Patil",
-    email: "soham@campulse.edu",
-    phone: "+91 98765 43210",
-    year: "TE - Computer Engg.",
-    analytics: { technical: 70, cultural: 20, sports: 10 },
-    timeline: [
-      { id: 1, title: "State Level Hackathon", type: "Technical", date: "Oct 12, 2023", status: "Approved" },
-      { id: 2, title: "Cultural Fest Volunteer", type: "Cultural", date: "Nov 05, 2023", status: "Pending" },
-      { id: 3, title: "AI/ML Workshop", type: "Seminar", date: "Nov 20, 2023", status: "Rejected" },
-    ]
-  },
-  {
-    id: "S22CE014",
-    name: "Aarav Sharma",
-    email: "aarav@campulse.edu",
-    phone: "+91 91234 56789",
-    year: "TE - Computer Engg.",
-    analytics: { technical: 40, cultural: 50, sports: 10 },
-    timeline: [
-      { id: 4, title: "Inter-college Debate", type: "Cultural", date: "Oct 15, 2023", status: "Approved" },
-      { id: 5, title: "Web Dev Bootcamp", type: "Technical", date: "Sep 22, 2023", status: "Approved" },
-    ]
-  },
-  {
-    id: "S22CE032",
-    name: "Priya Desai",
-    email: "priya@campulse.edu",
-    phone: "+91 99887 76655",
-    year: "TE - Computer Engg.",
-    analytics: { technical: 90, cultural: 0, sports: 10 },
-    timeline: [
-      { id: 6, title: "Cloud Computing Certification", type: "Technical", date: "Nov 10, 2023", status: "Approved" },
-    ]
-  }
-];
+import { supabase } from "@/app/student/supabase";
 
 export default function MenteeManagementPage() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedId, setSelectedId] = useState(menteesDatabase[0].id);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mentees, setMentees] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredMentees = menteesDatabase.filter(m => 
+  useEffect(() => {
+    async function fetchMentees() {
+      setLoading(true);
+      const suid = localStorage.getItem("campuspulse_uid");
+      if (!suid) return;
+
+      try {
+        // 1. Find the divisions this staff coordinates
+        const { data: coords } = await supabase.from("class_coordinators").select("division").eq("suid", suid);
+        const divisions = coords?.map(c => c.division) || [];
+
+        // 2. Find activities specifically assigned to this staff
+        const { data: myActs } = await supabase.from("student_activities").select("uid").eq("suid", suid);
+        const assignedUids = myActs?.map(a => a.uid) || [];
+
+        // 3. Fetch ALL students
+        const { data: allStudents } = await supabase.from("students").select("*");
+        if (!allStudents) return;
+
+        // 4. Filter students who are in coordinated divisions OR have activities assigned to this staff
+        const myStudents = allStudents.filter(s => divisions.includes(s.division) || assignedUids.includes(s.uid));
+
+        if (myStudents.length === 0) {
+          setMentees([]);
+          setLoading(false);
+          return;
+        }
+
+        // 5. Fetch ALL activities for these mentees to build their profile timeline
+        const menteeUids = myStudents.map(s => s.uid);
+        const { data: menteeActs } = await supabase.from("student_activities").select("*").in("uid", menteeUids).order("from_date", { ascending: false });
+
+        // 6. Map to UI data structure
+        const formattedMentees = myStudents.map(student => {
+          const studentActivities = menteeActs?.filter(a => a.uid === student.uid) || [];
+          const total = studentActivities.length;
+
+          // Calculate participation analytics percentages
+          const technical = total ? Math.round((studentActivities.filter(a => a.type === "Technical").length / total) * 100) : 0;
+          const cultural = total ? Math.round((studentActivities.filter(a => a.type === "Cultural").length / total) * 100) : 0;
+          const sports = total ? Math.round((studentActivities.filter(a => a.type === "Sports").length / total) * 100) : 0;
+
+          return {
+            id: student.uid,
+            name: student.name,
+            email: `${student.uid.toLowerCase()}@campulse.edu`,
+            phone: student.phone || "Not Provided",
+            year: student.year ? `${student.year} - Div ${student.division || 'N/A'}` : "Year N/A",
+            analytics: { technical, cultural, sports },
+            timeline: studentActivities.map(a => ({
+              id: a.id,
+              title: a.activity_name || a.title || "Untitled Activity",
+              type: a.type,
+              date: a.from_date,
+              status: a.status
+            }))
+          };
+        });
+
+        setMentees(formattedMentees);
+        
+        // Check if coming from dashboard URL click
+        const params = new URLSearchParams(window.location.search);
+        const queryId = params.get("id");
+        if (queryId && formattedMentees.find(m => m.id === queryId)) setSelectedId(queryId);
+        else if (formattedMentees.length > 0) setSelectedId(formattedMentees[0].id);
+        
+      } catch (error) {
+        console.error("Error fetching mentees:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchMentees();
+  }, []);
+
+  const filteredMentees = mentees.filter(m => 
     m.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     m.id.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const activeMentee = menteesDatabase.find(m => m.id === selectedId) || menteesDatabase[0];
+  const activeMentee = mentees.find(m => m.id === selectedId);
 
   return (
     <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-8 lg:items-start">
@@ -84,7 +123,11 @@ export default function MenteeManagementPage() {
 
         {/* Roster List */}
         <div className="flex flex-col gap-4 max-h-[60vh] overflow-y-auto pr-2 pb-4 smooth-scroll">
-          {filteredMentees.map((mentee) => {
+          {loading ? (
+            <p className="text-center text-slate-500 font-medium py-10">Loading roster...</p>
+          ) : filteredMentees.length === 0 ? (
+            <p className="text-center text-slate-400 text-sm py-10">No mentees found.</p>
+          ) : filteredMentees.map((mentee) => {
             const isActive = selectedId === mentee.id;
             return (
               <motion.button
@@ -108,14 +151,20 @@ export default function MenteeManagementPage() {
               </motion.button>
             );
           })}
-          {filteredMentees.length === 0 && (
-            <p className="text-center text-slate-400 text-sm py-4">No mentees found.</p>
-          )}
         </div>
       </div>
 
       {/* --- Right Pane: Dynamic Detail View --- */}
       <div className="w-full lg:w-2/3 lg:sticky lg:top-6">
+        {loading ? (
+          <div className="bg-[#F5F5F0] p-10 rounded-[3rem] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60 flex items-center justify-center min-h-[400px]">
+            <p className="text-slate-500 font-medium">Loading mentee details...</p>
+          </div>
+        ) : !activeMentee ? (
+          <div className="bg-[#F5F5F0] p-10 rounded-[3rem] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60 flex items-center justify-center min-h-[400px]">
+            <p className="text-slate-500 font-medium">No mentee selected.</p>
+          </div>
+        ) : (
         <AnimatePresence mode="wait">
           <motion.div
             key={activeMentee.id}
@@ -221,6 +270,7 @@ export default function MenteeManagementPage() {
 
           </motion.div>
         </AnimatePresence>
+        )}
       </div>
 
     </div>

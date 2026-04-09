@@ -1,22 +1,68 @@
 "use client";
 
-import React, { useState } from "react";
-import { motion } from "framer-motion";
+import React, { useState, useEffect } from "react";
+import { motion, Variants } from "framer-motion";
 import { UserCircle, Lock, Shield, BookOpen, Save } from "lucide-react";
-
-// --- Mock Data ---
-const studentProfile = {
-  uid: "S22CE001",
-  name: "Soham",
-  year: "Third Year (TE)",
-  division: "A",
-  department: "Computer Engineering",
-};
+import { supabase } from "@/app/student/supabase";
 
 export default function ProfilePage() {
-  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [profileData, setProfileData] = useState<any>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+
+  useEffect(() => {
+    const fetchStudentProfile = async () => {
+      try {
+        const uid = localStorage.getItem("campuspulse_uid");
+        if (!uid) return;
+
+        const { data, error } = await supabase
+          .from("students")
+          .select("*")
+          .eq("uid", uid)
+          .single();
+
+        if (error) throw error;
+        if (data) setProfileData(data);
+      } catch (error: any) {
+        console.error("Error fetching student profile:", error.message);
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+
+    fetchStudentProfile();
+  }, []);
+
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!newPassword || newPassword.length < 6) {
+      alert("Password must be at least 6 characters long.");
+      return;
+    }
+
+    setUpdatingPassword(true);
+    try {
+      const uid = localStorage.getItem("campuspulse_uid");
+      if (!uid) throw new Error("User not found");
+
+      const { error } = await supabase
+        .from("students")
+        .update({ password: newPassword })
+        .eq("uid", uid);
+
+      if (error) throw error;
+
+      alert("Password updated successfully!");
+      setNewPassword("");
+    } catch (error: any) {
+      alert("Error updating password: " + error.message);
+    } finally {
+      setUpdatingPassword(false);
+    }
+  };
 
   const containerVars = {
     hidden: { opacity: 0 },
@@ -26,7 +72,7 @@ export default function ProfilePage() {
     }
   };
 
-  const itemVars = {
+  const itemVars: Variants = {
     hidden: { opacity: 0, y: 20 },
     show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
   };
@@ -66,7 +112,7 @@ export default function ProfilePage() {
             <div>
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4 mb-2 block">Full Name</label>
               <div className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.03),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-5 md:py-4 md:px-6 text-slate-600 font-medium">
-                {studentProfile.name}
+                {loadingProfile ? "Loading..." : profileData?.name || "N/A"}
               </div>
             </div>
 
@@ -74,7 +120,7 @@ export default function ProfilePage() {
             <div>
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4 mb-2 block">University ID (UID)</label>
               <div className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.03),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-5 md:py-4 md:px-6 text-slate-600 font-medium flex items-center justify-between">
-                {studentProfile.uid}
+                {loadingProfile ? "Loading..." : profileData?.uid || "N/A"}
                 <Shield size={16} className="text-emerald-500" />
               </div>
             </div>
@@ -84,13 +130,13 @@ export default function ProfilePage() {
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4 mb-2 block">Year</label>
                 <div className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.03),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-5 md:py-4 md:px-6 text-slate-600 font-medium text-center">
-                  {studentProfile.year}
+                  {loadingProfile ? "Loading..." : profileData?.year || "N/A"}
                 </div>
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4 mb-2 block">Division</label>
                 <div className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.03),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-5 md:py-4 md:px-6 text-slate-600 font-medium text-center">
-                  {studentProfile.division}
+                  {loadingProfile ? "Loading..." : profileData?.division || "N/A"}
                 </div>
               </div>
             </div>
@@ -100,7 +146,7 @@ export default function ProfilePage() {
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4 mb-2 block">Department</label>
               <div className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.03),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-5 md:py-4 md:px-6 text-slate-600 font-medium flex items-center gap-2">
                 <BookOpen size={16} className="text-[#A78BFA]" />
-                {studentProfile.department}
+                {loadingProfile ? "Loading..." : profileData?.department || "N/A"}
               </div>
             </div>
           </div>
@@ -121,34 +167,27 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Current Password</label>
-                <input 
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 md:py-4 md:px-6 outline-none focus:ring-2 focus:ring-[#FDBA74]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
-                  placeholder="Phone number used at registration"
-                />
-              </div>
+            <form className="space-y-5" onSubmit={handlePasswordUpdate}>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">New Password</label>
                 <input 
                   type="password"
+                  required
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 md:py-4 md:px-6 outline-none focus:ring-2 focus:ring-[#FDBA74]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
-                  placeholder="Enter secure password"
+                  placeholder="Enter secure password (min 6 chars)"
                 />
               </div>
 
               <motion.button 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="w-full bg-[#FDBA74] text-white font-bold py-3 md:py-4 rounded-full shadow-lg shadow-[#FDBA74]/30 hover:shadow-[#FDBA74]/50 transition-all flex items-center justify-center gap-2 mt-6 md:mt-4"
+                disabled={updatingPassword}
+                type="submit"
+                className="w-full bg-[#FDBA74] text-white font-bold py-3 md:py-4 rounded-full shadow-lg shadow-[#FDBA74]/30 hover:shadow-[#FDBA74]/50 transition-all flex items-center justify-center gap-2 mt-6 md:mt-4 disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                <Save size={20} /> Update Credentials
+                <Save size={20} /> {updatingPassword ? "Updating..." : "Update Credentials"}
               </motion.button>
             </form>
           </motion.div>

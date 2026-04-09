@@ -1,16 +1,64 @@
 "use client";
 
-import React from "react";
-import { motion } from "framer-motion";
+import React, { useState, useEffect } from "react";
+import { motion, Variants } from "framer-motion";
 import { Award, CalendarClock, ShieldCheck, Activity, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/app/student/supabase";
 
 export default function StudentDashboard() {
-  // Mock Data for now
-  const studentName = "Soham";
   const router = useRouter();
   
-  const containerVars = {
+  // --- Dynamic State ---
+  const [studentName, setStudentName] = useState("Loading...");
+  const [stats, setStats] = useState({ total: 0, pendingLeaves: 0, approvedLeaves: 0, pulse: 0 });
+  const [mentor, setMentor] = useState({ name: "Not Assigned", dept: "Awaiting Assignment" });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchStudentData() {
+      try {
+        const loggedInUid = localStorage.getItem("campuspulse_uid");
+        if (!loggedInUid) {
+          router.push("/");
+          return;
+        }
+
+        // 1. Fetch the specific logged-in Student
+        const { data: student } = await supabase.from("students").select("*").eq("uid", loggedInUid).single();
+        if (student) setStudentName(student.name);
+
+        if (student) {
+          // 2. Fetch Activities for this student
+          const { data: activities } = await supabase.from("student_activities").select("*").eq("uid", student.uid);
+
+          if (activities) {
+            const total = activities.length;
+            const pendingLeaves = activities.filter(a => a.leave_required && a.status === "Pending").length;
+            const approvedLeaves = activities.filter(a => a.leave_required && a.status === "Approved").length;
+            const pulse = Math.min(Math.round((total / 10) * 100), 100); // Mock pulse calculation out of 10 activities
+
+            setStats({ total, pendingLeaves, approvedLeaves, pulse });
+
+            // 3. Fetch Mentor (using the SUID from their most recent activity if available)
+            const activityWithMentor = activities.find(a => a.suid);
+            if (activityWithMentor) {
+              const { data: staff } = await supabase.from("staff").select("name").eq("suid", activityWithMentor.suid).single();
+              if (staff) setMentor({ name: staff.name, dept: "Faculty Mentor" });
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching student data:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchStudentData();
+  }, []);
+
+  const containerVars: Variants = {
     hidden: { opacity: 0 },
     show: {
       opacity: 1,
@@ -18,7 +66,7 @@ export default function StudentDashboard() {
     }
   };
 
-  const itemVars = {
+  const itemVars: Variants = {
     hidden: { opacity: 0, y: 20 },
     show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
   };
@@ -30,7 +78,7 @@ export default function StudentDashboard() {
       <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-slate-800 tracking-tight">
-            Welcome back, <span className="text-[#A78BFA]">{studentName}</span>
+            Welcome back, <span className="text-[#A78BFA]">{loading ? "..." : studentName}</span>
           </h2>
           <p className="text-slate-500 mt-2">Here is your pulse for the current semester.</p>
         </div>
@@ -62,7 +110,7 @@ export default function StudentDashboard() {
           </div>
           <div>
             <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Total Activities</p>
-            <h3 className="text-3xl md:text-4xl font-black text-slate-700">12</h3>
+            <h3 className="text-3xl md:text-4xl font-black text-slate-700">{loading ? "-" : stats.total}</h3>
           </div>
         </motion.div>
 
@@ -73,7 +121,7 @@ export default function StudentDashboard() {
           </div>
           <div>
             <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Pending Leaves</p>
-            <h3 className="text-3xl md:text-4xl font-black text-slate-700">2 <span className="text-base md:text-lg text-slate-400 font-medium">/ 14 Approved</span></h3>
+            <h3 className="text-3xl md:text-4xl font-black text-slate-700">{loading ? "-" : stats.pendingLeaves} <span className="text-base md:text-lg text-slate-400 font-medium">/ {loading ? "-" : stats.approvedLeaves} Approved</span></h3>
           </div>
         </motion.div>
 
@@ -84,8 +132,8 @@ export default function StudentDashboard() {
           </div>
           <div>
             <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Faculty Mentor</p>
-            <h3 className="text-xl font-bold text-slate-700">Prof. R. K. Sharma</h3>
-            <p className="text-sm text-slate-500">Computer Engineering Dept.</p>
+            <h3 className="text-xl font-bold text-slate-700">{loading ? "Loading..." : mentor.name}</h3>
+            <p className="text-sm text-slate-500">{loading ? "" : mentor.dept}</p>
           </div>
         </motion.div>
 
@@ -97,13 +145,13 @@ export default function StudentDashboard() {
           <div className="flex-1 w-full">
             <div className="flex justify-between mb-2">
               <p className="text-sm font-bold text-slate-400 uppercase tracking-wider">Engagement Pulse</p>
-              <p className="text-sm font-bold text-[#A78BFA]">75%</p>
+              <p className="text-sm font-bold text-[#A78BFA]">{loading ? "-" : `${stats.pulse}%`}</p>
             </div>
             {/* Pill shaped progress bar */}
             <div className="w-full h-4 bg-[#F5F5F0] rounded-full shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] overflow-hidden">
               <motion.div 
                 initial={{ width: 0 }}
-                animate={{ width: "75%" }}
+                animate={{ width: `${stats.pulse}%` }}
                 transition={{ duration: 1.5, delay: 0.5, ease: "easeOut" }}
                 className="h-full bg-gradient-to-r from-[#A78BFA] to-[#FDBA74] rounded-full"
               />

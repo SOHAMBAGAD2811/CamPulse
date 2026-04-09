@@ -1,26 +1,84 @@
 "use client";
 
-import React from "react";
-import { motion } from "framer-motion";
+import React, { useState, useEffect } from "react";
+import { motion, Variants } from "framer-motion";
 import { Users, Clock, Activity, ChevronRight, UserCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-
-// --- Mock Data ---
-const staffName = "Prof. Sharma";
-
-const mentees = [
-  { id: "S22CE001", name: "Soham Patil", pendingAction: true, lastActive: "2 hrs ago" },
-  { id: "S22CE014", name: "Aarav Sharma", pendingAction: false, lastActive: "1 day ago" },
-  { id: "S22CE032", name: "Priya Desai", pendingAction: true, lastActive: "5 mins ago" },
-  { id: "S22CE045", name: "Rohan Gupta", pendingAction: false, lastActive: "3 days ago" },
-  { id: "S22CE058", name: "Neha Verma", pendingAction: false, lastActive: "Just now" },
-  { id: "S22CE061", name: "Karan Mehta", pendingAction: true, lastActive: "1 hr ago" },
-];
+import { supabase } from "@/app/student/supabase";
 
 export default function StaffCommandCenter() {
   const router = useRouter();
+  
+  // --- Dynamic State ---
+  const [staffName, setStaffName] = useState("Loading...");
+  const [stats, setStats] = useState({ totalMentees: 0, pendingActions: 0, recentPulse: 0 });
+  const [mentees, setMentees] = useState<{ id: string; name: string; pendingAction: boolean; lastActive: string }[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const containerVars = {
+  useEffect(() => {
+    async function fetchDashboardData() {
+      try {
+        const loggedInUid = localStorage.getItem("campuspulse_uid");
+        if (!loggedInUid) {
+          router.push("/");
+          return;
+        }
+
+        // 1. Fetch specific logged-in Staff Member
+        const { data: staff } = await supabase.from("staff").select("name").eq("suid", loggedInUid).single();
+        if (staff) setStaffName(staff.name);
+
+        // 2. Fetch Students (Directory of all students)
+        const { data: studentsData } = await supabase.from("students").select("uid, name");
+
+        // 3. Fetch Activities specifically mapped to this staff member
+        const { data: activities } = await supabase.from("student_activities").select("uid, status, created_at").eq("suid", loggedInUid);
+
+        if (studentsData && activities) {
+          const pendingCount = activities.filter(a => a.status === "Pending").length;
+          
+          const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          const recentCount = activities.filter(a => new Date(a.created_at) > twentyFourHoursAgo).length;
+
+          setStats({
+            totalMentees: studentsData.length,
+            pendingActions: pendingCount,
+            recentPulse: recentCount,
+          });
+
+          // Map the students into the UI card format (Limit to 6 for the dashboard preview)
+          const mappedMentees = studentsData.slice(0, 6).map(student => {
+            const studentActs = activities.filter(a => a.uid === student.uid);
+            const hasPending = studentActs.some(a => a.status === "Pending");
+            
+            let lastActive = "No recent activity";
+            if (studentActs.length > 0) {
+              // Find the most recent activity timestamp
+              const latest = new Date(Math.max(...studentActs.map(a => new Date(a.created_at).getTime())));
+              lastActive = latest.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            }
+
+            return {
+              id: student.uid,
+              name: student.name,
+              pendingAction: hasPending,
+              lastActive
+            };
+          });
+
+          setMentees(mappedMentees);
+        }
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchDashboardData();
+  }, []);
+
+  const containerVars: Variants = {
     hidden: { opacity: 0 },
     show: {
       opacity: 1,
@@ -28,7 +86,7 @@ export default function StaffCommandCenter() {
     }
   };
 
-  const itemVars = {
+  const itemVars: Variants = {
     hidden: { opacity: 0, y: 20 },
     show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
   };
@@ -42,7 +100,7 @@ export default function StaffCommandCenter() {
           <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-slate-800 tracking-tight">
             Command <span className="text-[#60A5FA]">Center</span>
           </h2>
-          <p className="text-slate-500 mt-2">Welcome back, {staffName}. Here is your mentorship overview.</p>
+          <p className="text-slate-500 mt-2">Welcome back, {staffName}. Here is your dashboard overview.</p>
         </div>
 
         <motion.button 
@@ -67,7 +125,7 @@ export default function StaffCommandCenter() {
             </div>
             <div>
               <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Total Mentees</p>
-              <h3 className="text-3xl font-black text-slate-700">24</h3>
+              <h3 className="text-3xl font-black text-slate-700">{loading ? "-" : stats.totalMentees}</h3>
             </div>
           </motion.div>
 
@@ -78,7 +136,7 @@ export default function StaffCommandCenter() {
             </div>
             <div>
               <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Pending Actions</p>
-              <h3 className="text-3xl font-black text-slate-700">5</h3>
+              <h3 className="text-3xl font-black text-slate-700">{loading ? "-" : stats.pendingActions}</h3>
             </div>
           </motion.div>
 
@@ -89,7 +147,7 @@ export default function StaffCommandCenter() {
             </div>
             <div>
               <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Recent Pulse</p>
-              <h3 className="text-3xl font-black text-slate-700">12 <span className="text-sm font-medium text-slate-400">logs / 24h</span></h3>
+              <h3 className="text-3xl font-black text-slate-700">{loading ? "-" : stats.recentPulse} <span className="text-sm font-medium text-slate-400">logs / 24h</span></h3>
             </div>
           </motion.div>
         </div>

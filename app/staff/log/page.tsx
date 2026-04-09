@@ -1,40 +1,173 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Clock, X, MapPin, Calendar, FileText, ChevronDown, ChevronUp, Briefcase, FileDown } from "lucide-react";
+import { Plus, Clock, X, MapPin, Calendar, FileText, ChevronDown, ChevronUp, Briefcase, FileDown, CheckCircle } from "lucide-react";
+import { supabase } from "@/app/student/supabase";
+import { useRouter } from "next/navigation";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
-// --- Mock Data ---
-const mockActivities = [
-  {
-    id: 1,
-    title: "Guest Lecture on Cloud Computing",
-    type: "Expert Session",
-    date: "Nov 18, 2023",
-    location: "MIT College of Engineering",
-    desc: "Delivered a 3-hour hands-on session on AWS architecture and deployment strategies for third-year students. Received excellent feedback.",
-  },
-  {
-    id: 2,
-    title: "Paper Published in IEEE Xplore",
-    type: "Publication",
-    date: "Oct 25, 2023",
-    location: "International Journal of AI",
-    desc: "Co-authored the research paper titled 'Optimizing Neural Networks for Edge Devices'. Presented findings at the virtual global conference.",
-  },
-  {
-    id: 3,
-    title: "TCS Industrial Visit Coordinator",
-    type: "Industrial Visit",
-    date: "Sep 14, 2023",
-    location: "TCS Campus, Pune",
-    desc: "Led a delegation of 50 final-year students to the TCS campus to understand Agile workflows and enterprise server management.",
-  },
-];
+// Helper function for 15-day date constraints
+const getDateConstraints = () => {
+  const today = new Date();
+  const minDate = new Date(today);
+  minDate.setDate(today.getDate() - 15);
+  const maxDate = new Date(today);
+  maxDate.setDate(today.getDate() + 15);
+  const formatDate = (date: Date) => date.toISOString().split('T')[0];
+  return { min: formatDate(minDate), max: formatDate(maxDate), today: formatDate(today) };
+};
 
 export default function FacultyLogPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [activities, setActivities] = useState<any[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(true);
+  const [staffName, setStaffName] = useState("");
+  
+  // Export Modal State
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportYear, setExportYear] = useState("");
+
+  const { min, max, today } = getDateConstraints();
+  const router = useRouter();
+
+  // Protect route: Ensure user is actually Staff
+  useEffect(() => {
+    const fetchDiaryData = async () => {
+      const suid = localStorage.getItem("campuspulse_uid");
+      if (!suid) {
+        router.replace("/");
+        return;
+      }
+      
+      const { data: staffData, error: staffError } = await supabase.from("staff").select("suid, name").eq("suid", suid).maybeSingle();
+      if (staffError || !staffData) {
+        router.replace("/"); // Not found in staff table, kick them out
+        return;
+      }
+      if (staffData.name) setStaffName(staffData.name);
+
+      // Fetch activities for the timeline feed
+      const { data: actData } = await supabase.from("staff_activities").select("*").eq("suid", suid).order("from_date", { ascending: false });
+      if (actData) setActivities(actData);
+      
+      setLoadingActivities(false);
+    };
+    fetchDiaryData();
+  }, [router]);
+
+  const [formData, setFormData] = useState({
+    title: "",
+    category: "Expert Session",
+    division: "",
+    targetBatch: "",
+    academicYear: "",
+    fromDate: today,
+    toDate: today,
+    fromTime: "",
+    toTime: "",
+    location: "",
+    proofLink: "",
+    description: "",
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const suid = localStorage.getItem("campuspulse_uid");
+      if (!suid) {
+        alert("Staff User not logged in");
+        return;
+      }
+
+      const { data: insertedData, error } = await supabase.from("staff_activities").insert([
+        {
+          suid,
+          title: formData.title,
+          type: formData.category,
+          division: formData.division,
+          target_batch: formData.targetBatch,
+          academic_year: formData.academicYear,
+          from_date: formData.fromDate,
+          to_date: formData.toDate,
+          from_time: formData.fromTime,
+          to_time: formData.toTime,
+          location: formData.location,
+          proof_link: formData.proofLink || null,
+          desc: formData.description
+        }
+      ]).select();
+
+      if (error) throw error;
+      
+      setShowSuccess(true);
+
+      // Immediately push the new activity to the feed without reloading
+      if (insertedData) setActivities([insertedData[0], ...activities]);
+
+      setIsSheetOpen(false);
+      // Reset form
+      setFormData({ ...formData, title: "", division: "", targetBatch: "", academicYear: "", fromTime: "", toTime: "", location: "", proofLink: "", description: "" });
+      // Hide toast after 3 seconds
+      setTimeout(() => setShowSuccess(false), 3000);
+    } catch (error: any) {
+      alert("Error saving activity: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- PDF Export Logic ---
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    
+    // Filter activities based on the selected year
+    const filtered = exportYear 
+      ? activities.filter(a => a.academic_year?.includes(exportYear))
+      : activities;
+
+    if (filtered.length === 0) {
+      alert("No activities found for the selected filter.");
+      return;
+    }
+
+    // PDF Headers
+    doc.setFontSize(18);
+    doc.text("Professional Diary Report", 14, 22);
+    
+    doc.setFontSize(11);
+    doc.setTextColor(100);
+    doc.text(`Generated by CampusPulse`, 14, 30);
+    doc.text(`Faculty Name: ${staffName || 'Staff Member'}`, 14, 36);
+    if (exportYear) doc.text(`Academic Year Filter: ${exportYear}`, 14, 42);
+
+    // Table Data
+    const tableData = filtered.map(a => [
+      `${a.from_date}${a.to_date !== a.from_date ? ` to ${a.to_date}` : ''}`,
+      a.type,
+      a.title,
+      a.academic_year || '-',
+      a.division ? `${a.division} (${a.target_batch || '-'})` : a.target_batch || '-',
+      a.location || '-'
+    ]);
+
+    autoTable(doc, {
+      startY: exportYear ? 48 : 42,
+      head: [['Date', 'Category', 'Title', 'Year', 'Div (Batch)', 'Location']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [96, 165, 250] }, // CampusPulse Blue (#60A5FA)
+      styles: { fontSize: 9 },
+    });
+
+    doc.save(`Faculty_Report_${exportYear || 'All'}.pdf`);
+    setIsExportModalOpen(false);
+  };
 
   const getIconForType = (type: string) => {
     switch (type) {
@@ -46,6 +179,9 @@ export default function FacultyLogPage() {
         return <MapPin size={16} />;
     }
   };
+
+  // Get unique academic years for the export filter
+  const uniqueYears = Array.from(new Set(activities.map(a => a.academic_year).filter(Boolean)));
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -64,6 +200,7 @@ export default function FacultyLogPage() {
           <motion.button 
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
+            onClick={() => setIsExportModalOpen(true)}
             className="bg-[#F5F5F0] text-slate-600 px-6 py-3 md:py-3 rounded-full font-semibold shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60 hover:text-[#60A5FA] transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             <FileDown size={20} />
@@ -85,7 +222,12 @@ export default function FacultyLogPage() {
 
       {/* --- Vertical Timeline Feed --- */}
       <div className="relative border-l-2 border-[#60A5FA]/20 ml-4 md:ml-6 space-y-8 pb-12">
-        {mockActivities.map((activity) => {
+        
+        {loadingActivities && <p className="text-slate-500 text-sm font-medium ml-6">Loading diary entries...</p>}
+        
+        {!loadingActivities && activities.length === 0 && <p className="text-slate-500 text-sm font-medium ml-6">No activities have been logged yet.</p>}
+
+        {activities.map((activity) => {
           const isExpanded = expandedId === activity.id;
 
           return (
@@ -119,7 +261,7 @@ export default function FacultyLogPage() {
                   <div className="flex items-center gap-4 text-slate-400 text-sm">
                     <div className="flex items-center gap-1">
                       <Calendar size={14} />
-                      {activity.date}
+                    {activity.from_date} {activity.from_date !== activity.to_date && `to ${activity.to_date}`}
                     </div>
                     <div className="w-8 h-8 rounded-full bg-[#F5F5F0] shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] flex items-center justify-center text-slate-400">
                       {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -187,23 +329,27 @@ export default function FacultyLogPage() {
                   </button>
                 </div>
 
-                <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); setIsSheetOpen(false); }}>
+                <form className="space-y-6" onSubmit={handleSubmit}>
                   
                   {/* Input: Title */}
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Activity Title</label>
                     <input 
-                      type="text"
+                      type="text" required
+                      value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})}
                       className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
                       placeholder="e.g., AI/ML Guest Lecture"
                     />
                   </div>
 
-                  {/* Input: Type & Date row */}
+                  {/* Input: Category & Academic Year row */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Category</label>
-                      <select className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none appearance-none cursor-pointer">
+                      <select 
+                        value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}
+                        className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none appearance-none cursor-pointer"
+                      >
                         <option>Expert Session</option>
                         <option>Publication</option>
                         <option>Workshop/FDP</option>
@@ -212,9 +358,75 @@ export default function FacultyLogPage() {
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Date</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Academic Year(s)</label>
                       <input 
-                        type="date"
+                        type="text" 
+                        value={formData.academicYear} onChange={e => setFormData({...formData, academicYear: e.target.value})}
+                        className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
+                        placeholder="e.g., 2023-24, 2024-25"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Input: Division & Batch row */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Division(s)</label>
+                      <input 
+                        type="text" 
+                        value={formData.division} onChange={e => setFormData({...formData, division: e.target.value})}
+                        className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
+                        placeholder="e.g., A, B"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Target Batch(es)</label>
+                      <input 
+                        type="text" 
+                        value={formData.targetBatch} onChange={e => setFormData({...formData, targetBatch: e.target.value})}
+                        className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
+                        placeholder="e.g., A1, A2, B1"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Input: Date Range */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">From Date</label>
+                      <input 
+                        type="date" required
+                        min={min} max={max}
+                        value={formData.fromDate} onChange={e => setFormData({...formData, fromDate: e.target.value})}
+                        className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">To Date</label>
+                      <input 
+                        type="date" required
+                        min={min} max={max}
+                        value={formData.toDate} onChange={e => setFormData({...formData, toDate: e.target.value})}
+                        className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Input: Time Range */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">From Time</label>
+                      <input 
+                        type="time" required
+                        value={formData.fromTime} onChange={e => setFormData({...formData, fromTime: e.target.value})}
+                        className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">To Time</label>
+                      <input 
+                        type="time" required
+                        value={formData.toTime} onChange={e => setFormData({...formData, toTime: e.target.value})}
                         className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none"
                       />
                     </div>
@@ -224,7 +436,8 @@ export default function FacultyLogPage() {
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Location / Journal</label>
                     <input 
-                      type="text"
+                      type="text" required
+                      value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})}
                       className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
                       placeholder="Where did this happen?"
                     />
@@ -234,7 +447,8 @@ export default function FacultyLogPage() {
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Proof / Link (Optional)</label>
                     <input 
-                      type="url"
+                      type="url" 
+                      value={formData.proofLink} onChange={e => setFormData({...formData, proofLink: e.target.value})}
                       className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-4 px-6 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
                       placeholder="https://..."
                     />
@@ -244,7 +458,8 @@ export default function FacultyLogPage() {
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Description & Impact</label>
                     <textarea 
-                      rows={4}
+                      rows={4} required
+                      value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}
                       className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-3xl py-4 px-6 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none resize-none"
                       placeholder="Briefly explain your role, target audience, and impact..."
                     />
@@ -253,13 +468,83 @@ export default function FacultyLogPage() {
                   <motion.button 
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
+                    disabled={loading}
                     type="submit"
-                    className="w-full bg-[#60A5FA] text-white font-bold py-4 rounded-full shadow-lg shadow-[#60A5FA]/30 hover:shadow-[#60A5FA]/50 transition-all flex items-center justify-center gap-2 mt-8"
+                    className="w-full bg-[#60A5FA] text-white font-bold py-4 rounded-full shadow-lg shadow-[#60A5FA]/30 hover:shadow-[#60A5FA]/50 transition-all flex items-center justify-center gap-2 mt-8 disabled:opacity-70 disabled:cursor-not-allowed"
                   >
-                    Save to Diary
+                    {loading ? "Saving..." : "Save to Diary"}
                   </motion.button>
                 </form>
               </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Success Toast Notification */}
+      <AnimatePresence>
+        {showSuccess && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="fixed bottom-6 right-6 bg-[#F5F5F0] text-slate-700 px-6 py-4 rounded-2xl shadow-[8px_8px_16px_rgba(0,0,0,0.1),-8px_-8px_16px_rgba(255,255,255,0.9)] border border-white/60 flex items-center gap-3 font-bold z-[60]"
+          >
+            <CheckCircle size={24} className="text-emerald-500" />
+            Activity saved
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- Export Filter Modal --- */}
+      <AnimatePresence>
+        {isExportModalOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setIsExportModalOpen(false)}
+              className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            >
+              {/* Modal Content */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                onClick={(e) => e.stopPropagation()} // Prevent clicking inside from closing it
+                className="bg-[#F5F5F0] p-6 md:p-8 rounded-[2rem] shadow-[8px_8px_16px_rgba(0,0,0,0.1),-8px_-8px_16px_rgba(255,255,255,0.9)] border border-white/60 w-full max-w-sm"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold text-slate-700">Export Report</h3>
+                  <button onClick={() => setIsExportModalOpen(false)} className="text-slate-400 hover:text-rose-500 transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="space-y-4 mb-8">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Filter by Academic Year</label>
+                  <select 
+                    value={exportYear} 
+                    onChange={(e) => setExportYear(e.target.value)}
+                    className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none appearance-none cursor-pointer"
+                  >
+                    <option value="">All Years</option>
+                    {uniqueYears.map((year: any, i) => (
+                      <option key={i} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <motion.button 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleExportPDF}
+                  className="w-full bg-[#60A5FA] text-white font-bold py-3 rounded-full shadow-lg shadow-[#60A5FA]/30 hover:shadow-[#60A5FA]/50 transition-all flex items-center justify-center gap-2"
+                >
+                  <FileDown size={18} />
+                  Generate PDF
+                </motion.button>
+              </motion.div>
             </motion.div>
           </>
         )}
