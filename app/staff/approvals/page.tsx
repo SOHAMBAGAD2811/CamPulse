@@ -7,7 +7,7 @@ import { supabase } from "@/app/student/supabase";
 
 export default function PriorityQueuePage() {
   const [requests, setRequests] = useState<any[]>([]);
-  const [feedbacks, setFeedbacks] = useState<{ [key: number]: string }>({});
+  const [feedbacks, setFeedbacks] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -39,7 +39,8 @@ export default function PriorityQueuePage() {
 
         // Map the data to match our UI
         const mapped = activities.map((act: any) => ({
-          id: act.activity_id,
+          id: act.activity_id || act.id,
+          pkColumn: act.activity_id ? "activity_id" : "id",
           uid: act.uid,
           studentName: studentMap[act.uid] || "Unknown Student",
           title: act.activity_name,
@@ -56,18 +57,26 @@ export default function PriorityQueuePage() {
     fetchPendingRequests();
   }, []);
 
-  const handleAction = async (id: number, action: "approve" | "reject") => {
+  const handleAction = async (id: string | number, action: "approve" | "reject") => {
+    const reqItem = requests.find((r) => r.id === id);
+    if (!reqItem) return;
+
     const status = action === "approve" ? "Approved" : "Rejected";
-    const feedback = feedbacks[id] || null;
+    const feedback = feedbacks[String(id)] || null;
 
     try {
       // 1. Update the database
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("student_activities")
         .update({ status, feedback })
-        .eq("activity_id", id);
+        .eq(reqItem.pkColumn, id)
+        .select();
 
       if (error) throw error;
+
+      if (!data || data.length === 0) {
+        throw new Error("No rows were updated. This may be due to Row Level Security (RLS) policies blocking the update.");
+      }
 
       // 2. Remove the item from the local UI queue
       setRequests((prev) => prev.filter((req) => req.id !== id));
@@ -76,8 +85,8 @@ export default function PriorityQueuePage() {
     }
   };
 
-  const handleFeedbackChange = (id: number, value: string) => {
-    setFeedbacks((prev) => ({ ...prev, [id]: value }));
+  const handleFeedbackChange = (id: string | number, value: string) => {
+    setFeedbacks((prev) => ({ ...prev, [String(id)]: value }));
   };
 
   return (
