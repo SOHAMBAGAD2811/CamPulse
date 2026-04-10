@@ -23,8 +23,31 @@ export default function ProfilePage() {
           .eq("uid", uid)
           .single();
 
-        if (error) throw error;
-        if (data) setProfileData(data);
+        if (error) {
+          console.error("Supabase error:", error.message);
+        }
+        
+        if (data) {
+          // Safely fetch department name separately to prevent breaking the entire profile
+          if (data.department_id) {
+            const { data: dept } = await supabase.from("departments").select("department_name").eq("department_id", data.department_id).maybeSingle();
+            if (dept) data.department_name_resolved = dept.department_name;
+          }
+
+          // Safely fetch academic year separately
+          if (data.year_id) {
+            const { data: academicYear, error: yearError } = await supabase.from("academic_years").select("year_name").eq("year_id", data.year_id).maybeSingle();
+            
+            if (yearError) {
+              console.error("Year Fetch Error:", yearError.message);
+            } else if (academicYear) {
+              data.year_name_resolved = academicYear.year_name;
+            } else {
+              console.warn("No academic year matched ID:", data.year_id, "- This might be due to Row Level Security (RLS) blocking the read!");
+            }
+          }
+          setProfileData(data);
+        }
       } catch (error: any) {
         console.error("Error fetching student profile:", error.message);
       } finally {
@@ -130,7 +153,7 @@ export default function ProfilePage() {
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4 mb-2 block">Year</label>
                 <div className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.03),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-5 md:py-4 md:px-6 text-slate-600 font-medium text-center">
-                  {loadingProfile ? "Loading..." : profileData?.year || "N/A"}
+                  {loadingProfile ? "Loading..." : profileData?.year_name_resolved || profileData?.year || profileData?.academic_year || profileData?.current_year || "N/A"}
                 </div>
               </div>
               <div>
@@ -146,7 +169,7 @@ export default function ProfilePage() {
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4 mb-2 block">Department</label>
               <div className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.03),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-5 md:py-4 md:px-6 text-slate-600 font-medium flex items-center gap-2">
                 <BookOpen size={16} className="text-[#A78BFA]" />
-                {loadingProfile ? "Loading..." : profileData?.department || "N/A"}
+                {loadingProfile ? "Loading..." : profileData?.department_name_resolved || profileData?.department || profileData?.dept || "N/A"}
               </div>
             </div>
           </div>

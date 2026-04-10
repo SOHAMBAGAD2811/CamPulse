@@ -50,7 +50,7 @@ export default function MentorshipPage() {
             // 3. Fetch the staff details directly
             const { data: staffData, error: staffError } = await supabase
               .from("staff")
-              .select("name, department")
+              .select("*")
               .eq("suid", coordData.suid)
               .maybeSingle();
             
@@ -58,9 +58,14 @@ export default function MentorshipPage() {
             console.log("3. Staff Data:", staffData);
 
             if (staffData) {
+              let resolvedDept = staffData.department || "Department N/A";
+              if (staffData.department_id) {
+                const { data: dept } = await supabase.from("departments").select("department_name").eq("department_id", staffData.department_id).maybeSingle();
+                if (dept) resolvedDept = dept.department_name;
+              }
               setMentorInfo({
                 name: staffData.name,
-                department: staffData.department
+                department: resolvedDept
               });
             }
           }

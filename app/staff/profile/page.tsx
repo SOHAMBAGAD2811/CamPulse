@@ -28,11 +28,30 @@ export default function StaffProfilePage() {
           .eq("suid", suid)
           .single();
 
-        if (error || !data) {
-          router.replace("/"); // Kicks out students trying to access profile
-          return;
+        if (error) {
+          console.error("Supabase error:", error.message);
         }
-        if (data) setProfileData(data);
+        
+        if (data) {
+          console.log("1. Staff Data Loaded:", data);
+          
+          // Safely fetch department name separately to prevent breaking the entire profile
+          const fkId = data.department_id || data.dept_id;
+          
+          if (fkId) {
+            const { data: dept, error: deptError } = await supabase.from("departments").select("department_name").eq("department_id", fkId).maybeSingle();
+            
+            if (deptError) {
+              console.error("2. Department Fetch Error:", deptError.message);
+            } else if (dept) {
+              console.log("3. Department Data Loaded:", dept);
+              data.department_name_resolved = dept.department_name;
+            } else {
+              console.warn("2. No department matched ID:", fkId, "- This might be due to Row Level Security (RLS) blocking the read on the department table!");
+            }
+          }
+          setProfileData(data);
+        }
       } catch (error: any) {
         console.error("Error fetching staff profile:", error.message);
       } finally {
@@ -146,7 +165,7 @@ export default function StaffProfilePage() {
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4 mb-2 block">Department</label>
               <div className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.03),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 px-5 md:py-4 md:px-6 text-slate-600 font-medium flex items-center gap-2">
                 <Building size={16} className="text-[#60A5FA]" />
-                {loadingProfile ? "Loading..." : profileData?.department || "N/A"}
+                {loadingProfile ? "Loading..." : profileData?.department_name_resolved || profileData?.department || profileData?.dept || "N/A"}
               </div>
             </div>
           </div>

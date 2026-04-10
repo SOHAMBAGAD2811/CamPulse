@@ -88,7 +88,7 @@ export default function FacultyLogPage() {
       const { data: insertedData, error } = await supabase.from("staff_activities").insert([
         {
           suid,
-          title: formData.title,
+          activity_name: formData.title,
           type: formData.category,
           division: formData.division,
           target_batch: formData.targetBatch,
@@ -99,7 +99,7 @@ export default function FacultyLogPage() {
           to_time: formData.toTime,
           location: formData.location,
           proof_link: formData.proofLink || null,
-          desc: formData.description
+          description: formData.description
         }
       ]).select();
 
@@ -150,7 +150,7 @@ export default function FacultyLogPage() {
     const tableData = filtered.map(a => [
       `${a.from_date}${a.to_date !== a.from_date ? ` to ${a.to_date}` : ''}`,
       a.type,
-      a.title,
+      a.activity_name,
       a.academic_year || '-',
       a.division ? `${a.division} (${a.target_batch || '-'})` : a.target_batch || '-',
       a.location || '-'
@@ -228,12 +228,12 @@ export default function FacultyLogPage() {
         {!loadingActivities && activities.length === 0 && <p className="text-slate-500 text-sm font-medium ml-6">No activities have been logged yet.</p>}
 
         {activities.map((activity) => {
-          const isExpanded = expandedId === activity.id;
+          const isExpanded = expandedId === activity.activity_id;
 
           return (
             <motion.div 
               layout
-              key={activity.id} 
+              key={activity.activity_id} 
               className="relative pl-8 md:pl-12"
             >
               {/* Timeline Dot */}
@@ -244,7 +244,7 @@ export default function FacultyLogPage() {
               {/* Neumorphic Card */}
               <motion.div 
                 layout
-                onClick={() => setExpandedId(isExpanded ? null : activity.id)}
+                onClick={() => setExpandedId(isExpanded ? null : activity.activity_id)}
                 className="bg-[#F5F5F0] p-5 md:p-6 rounded-2xl md:rounded-3xl shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60 cursor-pointer hover:shadow-[12px_12px_20px_rgba(0,0,0,0.06),-12px_-12px_20px_rgba(255,255,255,0.9)] transition-shadow"
               >
                 <motion.div layout className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -255,7 +255,7 @@ export default function FacultyLogPage() {
                         {activity.type}
                       </span>
                     </div>
-                    <h3 className="text-lg md:text-xl font-bold text-slate-700">{activity.title}</h3>
+                <h3 className="text-lg md:text-xl font-bold text-slate-700">{activity.activity_name}</h3>
                   </div>
 
                   <div className="flex items-center gap-4 text-slate-400 text-sm">
@@ -285,7 +285,7 @@ export default function FacultyLogPage() {
                           {activity.location}
                         </div>
                         <p className="text-slate-600 leading-relaxed">
-                          {activity.desc}
+                      {activity.description}
                         </p>
                       </div>
                     </motion.div>
