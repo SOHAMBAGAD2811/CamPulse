@@ -5,8 +5,20 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, XCircle, Clock, MapPin, Calendar, FileText, UserCircle, Send, MessageSquare } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
 
+type RequestItem = {
+  id: string | number;
+  pkColumn: "activity_id" | "id";
+  uid: string;
+  studentName: string;
+  title: string;
+  type: string;
+  date: string;
+  location: string;
+  desc: string;
+};
+
 export default function PriorityQueuePage() {
-  const [requests, setRequests] = useState<any[]>([]);
+  const [requests, setRequests] = useState<RequestItem[]>([]);
   const [feedbacks, setFeedbacks] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(true);
 
@@ -38,7 +50,7 @@ export default function PriorityQueuePage() {
         }, {});
 
         // Map the data to match our UI
-        const mapped = activities.map((act: any) => ({
+        const mapped: RequestItem[] = activities.map((act: any) => ({
           id: act.activity_id || act.id,
           pkColumn: act.activity_id ? "activity_id" : "id",
           uid: act.uid,
@@ -66,10 +78,11 @@ export default function PriorityQueuePage() {
 
     try {
       // 1. Update the database
+      const pkColumn = reqItem.pkColumn;
       const { data, error } = await supabase
         .from("student_activities")
-        .update({ status, feedback })
-        .eq(reqItem.pkColumn, id)
+        .update({ status, feedback } as { status: string; feedback: string | null })
+        .eq(pkColumn, id)
         .select();
 
       if (error) throw error;
