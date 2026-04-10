@@ -61,7 +61,7 @@ export default function MenteeManagementPage() {
             year: student.year ? `${student.year} - Div ${student.division || 'N/A'}` : "Year N/A",
             analytics: { technical, cultural, sports },
             timeline: studentActivities.map(a => ({
-              id: a.id,
+              id: a.activity_id,
               title: a.activity_name || a.title || "Untitled Activity",
               type: a.type,
               date: a.from_date,

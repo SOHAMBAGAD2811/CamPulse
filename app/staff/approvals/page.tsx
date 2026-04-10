@@ -39,7 +39,7 @@ export default function PriorityQueuePage() {
 
         // Map the data to match our UI
         const mapped = activities.map((act: any) => ({
-          id: act.id,
+          id: act.activity_id,
           uid: act.uid,
           studentName: studentMap[act.uid] || "Unknown Student",
           title: act.activity_name,
@@ -65,7 +65,7 @@ export default function PriorityQueuePage() {
       const { error } = await supabase
         .from("student_activities")
         .update({ status, feedback })
-        .eq("id", id);
+        .eq("activity_id", id);
 
       if (error) throw error;
 
