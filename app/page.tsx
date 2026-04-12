@@ -44,7 +44,7 @@ export default function LandingPage() {
       }
       
       // 2. If not a student, check staff table
-      const { data: staff, error: staffError } = await supabase.from("staff").select("suid").ilike("suid", normalizedId).maybeSingle();
+      const { data: staff, error: staffError } = await supabase.from("staff").select("suid, password").ilike("suid", normalizedId).maybeSingle();
       if (staffError) {
         console.error("Staff query error:", staffError.message);
         alert(`DB Error (staff): ${staffError.message}`);
@@ -52,8 +52,30 @@ export default function LandingPage() {
       }
       
       if (staff) {
+        if (staff.password && staff.password !== password) {
+          alert("Invalid password! Please try again.");
+          return;
+        }
         localStorage.setItem("campuspulse_uid", staff.suid);
         router.push("/staff");
+        return;
+      }
+      
+      // 3. If not staff, check hods table
+      const { data: hod, error: hodError } = await supabase.from("hods").select("huid, password").ilike("huid", normalizedId).maybeSingle();
+      if (hodError) {
+        console.error("HOD query error:", hodError.message);
+        alert(`DB Error (hods): ${hodError.message}`);
+        return;
+      }
+      
+      if (hod) {
+        if (hod.password && hod.password !== password) {
+          alert("Invalid password! Please try again.");
+          return;
+        }
+        localStorage.setItem("campuspulse_uid", hod.huid);
+        router.push("/hod");
         return;
       }
 
@@ -114,7 +136,7 @@ export default function LandingPage() {
           <form onSubmit={handleLogin} className="space-y-6">
             {/* UID Input */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">UID / Staff ID</label>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">UID / Staff ID / HOD ID</label>
               <div className="relative">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                   <User size={18} />

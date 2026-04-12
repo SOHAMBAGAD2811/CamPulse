@@ -5,6 +5,7 @@ import { motion, Variants } from "framer-motion";
 import { Users, Clock, Activity, ChevronRight, UserCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/student/supabase";
+import Noticeboard from "./components/Noticeboard";
 
 export default function StaffCommandCenter() {
   const router = useRouter();
@@ -151,6 +152,11 @@ export default function StaffCommandCenter() {
             </div>
           </motion.div>
         </div>
+
+        {/* --- Noticeboard Widget --- */}
+        <motion.div variants={itemVars}>
+          <Noticeboard />
+        </motion.div>
 
         {/* --- Mentees Overview Grid --- */}
         <motion.div variants={itemVars}>

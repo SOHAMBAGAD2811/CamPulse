@@ -5,6 +5,7 @@ import { motion, Variants } from "framer-motion";
 import { Award, CalendarClock, ShieldCheck, Activity, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/student/supabase";
+import Noticeboard from "./components/Noticeboard";
 
 export default function StudentDashboard() {
   const router = useRouter();
@@ -157,6 +158,11 @@ export default function StudentDashboard() {
               />
             </div>
           </div>
+        </motion.div>
+
+        {/* 5. Noticeboard Widget */}
+        <motion.div variants={itemVars} className="md:col-span-2 lg:col-span-3">
+          <Noticeboard />
         </motion.div>
 
       </motion.div>

@@ -15,6 +15,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
   const navItems = [
     { name: "Pulse", path: "/student", icon: LayoutDashboard },
     { name: "The Log", path: "/student/log", icon: ListTodo },
+    { name: "Events", path: "/student/events", icon: UserCircle},
     { name: "Mentorship", path: "/student/mentorship", icon: Users },
     { name: "Profile", path: "/student/profile", icon: UserCircle },
   ];
