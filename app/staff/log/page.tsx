@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Clock, X, MapPin, Calendar, FileText, ChevronDown, ChevronUp, Briefcase, FileDown, CheckCircle } from "lucide-react";
+import { Plus, Clock, X, MapPin, Calendar, FileText, ChevronDown, ChevronUp, Briefcase, FileDown, CheckCircle, Trash2 } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
 import { useRouter } from "next/navigation";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import MultiTagInput from "@/app/student/components/MultiTagInput";
 
 // Helper function for 15-day date constraints
 const getDateConstraints = () => {
@@ -19,6 +20,13 @@ const getDateConstraints = () => {
   return { min: formatDate(minDate), max: formatDate(maxDate), today: formatDate(today) };
 };
 
+// Helper to make dates more compact (e.g., "12 Oct 23")
+const formatShortDate = (dateString: string) => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
+};
+
 export default function FacultyLogPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -27,6 +35,9 @@ export default function FacultyLogPage() {
   const [activities, setActivities] = useState<any[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(true);
   const [staffName, setStaffName] = useState("");
+  const [staffList, setStaffList] = useState<{ suid: string; name: string }[]>([]);
+  const [studentList, setStudentList] = useState<{ uid: string; name: string }[]>([]);
+  const [currentUserSuid, setCurrentUserSuid] = useState("");
   
   // Export Modal State
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -43,6 +54,7 @@ export default function FacultyLogPage() {
         router.replace("/");
         return;
       }
+      setCurrentUserSuid(suid);
       
       const { data: staffData, error: staffError } = await supabase.from("staff").select("suid, name").eq("suid", suid).maybeSingle();
       if (staffError || !staffData) {
@@ -52,10 +64,27 @@ export default function FacultyLogPage() {
       if (staffData.name) setStaffName(staffData.name);
 
       // Fetch activities for the timeline feed
-      const { data: actData } = await supabase.from("staff_activities").select("*").eq("suid", suid).order("from_date", { ascending: false });
-      if (actData) setActivities(actData);
+      const { data: myActs } = await supabase.from("staff_activities").select("*").eq("suid", suid);
+      const { data: taggedActsData } = await supabase.from("staff_activity_comentors").select("staff_activities(*)").eq("staff_suid", suid);
+      
+      const taggedActs = taggedActsData?.map((ta: any) => ta.staff_activities).filter(Boolean) || [];
+      
+      const allActsMap = new Map();
+      [...(myActs || []), ...taggedActs].forEach((a: any) => {
+        if (a && a.activity_id) allActsMap.set(a.activity_id, a);
+      });
+      
+      const actData = Array.from(allActsMap.values()).sort((a, b) => new Date(b.from_date).getTime() - new Date(a.from_date).getTime());
+      setActivities(actData);
       
       setLoadingActivities(false);
+
+      // Fetch directories for the Multi-Tag Inputs
+      const { data: allStaff } = await supabase.from("staff").select("suid, name");
+      if (allStaff) setStaffList(allStaff);
+
+      const { data: allStudents } = await supabase.from("students").select("uid, name");
+      if (allStudents) setStudentList(allStudents);
     };
     fetchDiaryData();
   }, [router]);
@@ -73,6 +102,8 @@ export default function FacultyLogPage() {
     location: "",
     proofLink: "",
     description: "",
+    participantUids: [] as string[],
+    coMentorSuids: [] as string[],
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -104,6 +135,28 @@ export default function FacultyLogPage() {
       ]).select();
 
       if (error) throw error;
+
+      const activityId = insertedData[0].activity_id;
+
+      // Bulk insert co-faculty (peers)
+      if (formData.coMentorSuids.length > 0) {
+        const mentorsPayload = formData.coMentorSuids.map(mSuid => ({
+          activity_id: activityId,
+          staff_suid: String(mSuid)
+        }));
+        const { error: mentorError } = await supabase.from("staff_activity_comentors").insert(mentorsPayload);
+        if (mentorError) throw mentorError;
+      }
+
+      // Bulk insert students involved
+      if (formData.participantUids.length > 0) {
+        const participantsPayload = formData.participantUids.map(uid => ({
+          activity_id: activityId,
+          student_uid: String(uid)
+        }));
+        const { error: partError } = await supabase.from("staff_activity_participants").insert(participantsPayload);
+        if (partError) throw partError;
+      }
       
       setShowSuccess(true);
 
@@ -112,13 +165,24 @@ export default function FacultyLogPage() {
 
       setIsSheetOpen(false);
       // Reset form
-      setFormData({ ...formData, title: "", division: "", targetBatch: "", academicYear: "", fromTime: "", toTime: "", location: "", proofLink: "", description: "" });
+      setFormData({ ...formData, title: "", division: "", targetBatch: "", academicYear: "", fromTime: "", toTime: "", location: "", proofLink: "", description: "", participantUids: [], coMentorSuids: [] });
       // Hide toast after 3 seconds
       setTimeout(() => setShowSuccess(false), 3000);
     } catch (error: any) {
       alert("Error saving activity: " + error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (activityId: string | number) => {
+    if (!window.confirm("Are you sure you want to delete this activity from your diary?")) return;
+    try {
+      const { error } = await supabase.from("staff_activities").delete().eq("activity_id", activityId);
+      if (error) throw error;
+      setActivities(prev => prev.filter(a => a.activity_id !== activityId));
+    } catch (error: any) {
+      alert("Error deleting activity: " + error.message);
     }
   };
 
@@ -148,9 +212,9 @@ export default function FacultyLogPage() {
 
     // Table Data
     const tableData = filtered.map(a => [
-      `${a.from_date}${a.to_date !== a.from_date ? ` to ${a.to_date}` : ''}`,
-      a.type,
       a.activity_name,
+      `${formatShortDate(a.from_date)}${a.to_date && a.to_date !== a.from_date ? ` - ${formatShortDate(a.to_date)}` : ''}`,
+      a.type,
       a.academic_year || '-',
       a.division ? `${a.division} (${a.target_batch || '-'})` : a.target_batch || '-',
       a.location || '-'
@@ -158,7 +222,7 @@ export default function FacultyLogPage() {
 
     autoTable(doc, {
       startY: exportYear ? 48 : 42,
-      head: [['Date', 'Category', 'Title', 'Year', 'Div (Batch)', 'Location']],
+      head: [['Title', 'Date', 'Category', 'Year', 'Div (Batch)', 'Location']],
       body: tableData,
       theme: 'grid',
       headStyles: { fillColor: [96, 165, 250] }, // CampusPulse Blue (#60A5FA)
@@ -261,8 +325,20 @@ export default function FacultyLogPage() {
                   <div className="flex items-center gap-4 text-slate-400 text-sm">
                     <div className="flex items-center gap-1">
                       <Calendar size={14} />
-                    {activity.from_date} {activity.from_date !== activity.to_date && `to ${activity.to_date}`}
+                      {formatShortDate(activity.from_date)} {activity.from_date !== activity.to_date && `- ${formatShortDate(activity.to_date)}`}
                     </div>
+                    
+                    {/* Only show delete button if they are the original author */}
+                    {activity.suid === currentUserSuid && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(activity.activity_id); }}
+                        className="w-8 h-8 rounded-full bg-[#F5F5F0] shadow-[4px_4px_8px_rgba(0,0,0,0.05),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] flex items-center justify-center text-slate-400 hover:text-rose-500 transition-colors"
+                        title="Delete Activity"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                    
                     <div className="w-8 h-8 rounded-full bg-[#F5F5F0] shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] flex items-center justify-center text-slate-400">
                       {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </div>
@@ -316,7 +392,7 @@ export default function FacultyLogPage() {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-[#F5F5F0] shadow-2xl z-50 overflow-y-auto border-l border-white/60"
+              className="fixed top-0 right-0 bottom-0 w-full max-w-xl bg-[#F5F5F0] shadow-2xl z-50 overflow-y-auto border-l border-white/60"
             >
               <div className="p-6 md:p-8">
                 <div className="flex items-center justify-between mb-8">
@@ -388,6 +464,24 @@ export default function FacultyLogPage() {
                         placeholder="e.g., A1, A2, B1"
                       />
                     </div>
+                  </div>
+
+                  {/* Multi-Tag Inputs: Co-Faculty and Students */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <MultiTagInput 
+                      label="Co-Faculty (Optional)"
+                      placeholder="Search colleagues..."
+                      options={staffList.filter(s => String(s.suid) !== String(currentUserSuid)).map(s => ({ id: String(s.suid), name: s.name }))}
+                      selectedIds={formData.coMentorSuids}
+                      onChange={(ids) => setFormData({...formData, coMentorSuids: ids})}
+                    />
+                    <MultiTagInput 
+                      label="Students Involved (Optional)"
+                      placeholder="Search students..."
+                      options={studentList.map(s => ({ id: String(s.uid), name: s.name }))}
+                      selectedIds={formData.participantUids}
+                      onChange={(ids) => setFormData({...formData, participantUids: ids})}
+                    />
                   </div>
 
                   {/* Input: Date Range */}

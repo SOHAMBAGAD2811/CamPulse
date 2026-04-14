@@ -34,7 +34,7 @@ export default function HODDashboard() {
         const { data: events } = await supabase
           .from("event_proposals")
           .select("*")
-          .eq("department_id", hod.department_id)
+          .eq("department_id", String(hod.department_id))
           .eq("status", "pending")
           .order("created_at", { ascending: false });
           
@@ -44,7 +44,7 @@ export default function HODDashboard() {
         const { data: sData, error: sError } = await supabase
           .from("students")
           .select("*")
-          .eq("department_id", hod.department_id); // Removed String() since your DB types match now!
+          .eq("department_id", String(hod.department_id));
         
         if (sError) {
           console.error("Student count error:", sError.message);
@@ -57,7 +57,7 @@ export default function HODDashboard() {
         const { data: aData, error: aError } = await supabase
           .from("event_proposals")
           .select("id")
-          .eq("department_id", hod.department_id)
+          .eq("department_id", String(hod.department_id))
           .eq("status", "approved");
           
         if (aError) console.error("Approved count error:", aError.message);

@@ -32,10 +32,28 @@ export default function StaffCommandCenter() {
         // 2. Fetch Students (Directory of all students)
         const { data: studentsData } = await supabase.from("students").select("uid, name");
 
-        // 3. Fetch Activities specifically mapped to this staff member
-        const { data: activities } = await supabase.from("student_activities").select("uid, status, created_at").eq("suid", loggedInUid);
+        // 3. Fetch Activities specifically mapped to this staff member as a mentor
+        const { data: mentoredActs } = await supabase
+          .from("activity_mentors")
+          .select(`
+            group_activities (
+              id, created_at,
+              activity_participants ( student_uid, status )
+            )
+          `)
+          .eq("staff_suid", loggedInUid);
 
-        if (studentsData && activities) {
+        const activities: { uid: string, status: string, created_at: string }[] = [];
+        mentoredActs?.forEach((ma: any) => {
+          const act = ma.group_activities;
+          if (act && act.activity_participants) {
+            act.activity_participants.forEach((ap: any) => {
+              activities.push({ uid: ap.student_uid, status: ap.status, created_at: act.created_at });
+            });
+          }
+        });
+
+        if (studentsData) {
           const pendingCount = activities.filter(a => a.status === "Pending").length;
           
           const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);

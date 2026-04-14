@@ -122,7 +122,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
       </aside>
 
       {/* --- Mobile Bottom Bar --- */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-[#F5F5F0]/90 backdrop-blur-lg border-t border-white/60 shadow-[0_-8px_16px_rgba(0,0,0,0.05)] z-50 flex justify-around items-center px-4 pb-2">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-[#F5F5F0]/90 backdrop-blur-lg border-t border-white/60 shadow-[0_-8px_16px_rgba(0,0,0,0.05)] z-50 flex justify-around items-center px-2 pb-2">
         {navItems.map((item) => {
           const isActive = pathname === item.path;
           const Icon = item.icon;
@@ -130,13 +130,13 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             <Link key={item.path} href={item.path} className="relative">
               <motion.div
                 whileTap={{ scale: 0.9 }}
-                className={`flex flex-col items-center justify-center w-12 h-12 rounded-2xl transition-all ${
+                className={`flex flex-col items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-2xl transition-all ${
                   isActive
                     ? "bg-[#F5F5F0] text-[#A78BFA] shadow-[inset_2px_2px_6px_rgba(0,0,0,0.05),inset_-2px_-2px_6px_rgba(255,255,255,0.8)]"
                     : "text-slate-400 hover:text-slate-600"
                 }`}
               >
-                <Icon size={22} className={isActive ? "text-[#A78BFA]" : "text-slate-400"} />
+                <Icon size={20} className={isActive ? "text-[#A78BFA]" : "text-slate-400"} />
                 {item.name === "The Log" && (
                   <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#FDBA74] animate-pulse" />
                 )}
@@ -144,6 +144,15 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             </Link>
           );
         })}
+        <Link href="/" className="relative">
+          <motion.div
+            whileTap={{ scale: 0.9 }}
+            onClick={() => localStorage.removeItem("campuspulse_uid")}
+            className="flex flex-col items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-2xl transition-all text-slate-400 hover:text-rose-500"
+          >
+            <LogOut size={20} />
+          </motion.div>
+        </Link>
       </div>
 
       {/* --- Main Content Area --- */}

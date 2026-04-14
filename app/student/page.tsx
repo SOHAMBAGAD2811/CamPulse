@@ -30,21 +30,46 @@ export default function StudentDashboard() {
         if (student) setStudentName(student.name);
 
         if (student) {
-          // 2. Fetch Activities for this student
-          const { data: activities } = await supabase.from("student_activities").select("*").eq("uid", student.uid);
+          // 2. Fetch Participations for this student
+          const { data: participations } = await supabase
+            .from("activity_participants")
+            .select(`
+              status,
+              group_activities (
+                id, leave_required, created_at,
+                activity_mentors ( staff_suid )
+              )
+            `)
+            .eq("student_uid", student.uid);
 
-          if (activities) {
-            const total = activities.length;
-            const pendingLeaves = activities.filter(a => a.leave_required && a.status === "Pending").length;
-            const approvedLeaves = activities.filter(a => a.leave_required && a.status === "Approved").length;
-            const pulse = Math.min(Math.round((total / 10) * 100), 100); // Mock pulse calculation out of 10 activities
+          // 3. Fetch Legacy Activities (for backwards-compatible stats)
+          const { data: legacyActs } = await supabase
+            .from("student_activities")
+            .select("status, leave_required")
+            .eq("uid", student.uid);
 
-            setStats({ total, pendingLeaves, approvedLeaves, pulse });
+          const parts = participations || [];
+          const legs = legacyActs || [];
 
-            // 3. Fetch Mentor (using the SUID from their most recent activity if available)
-            const activityWithMentor = activities.find(a => a.suid);
-            if (activityWithMentor) {
-              const { data: staff } = await supabase.from("staff").select("name").eq("suid", activityWithMentor.suid).single();
+          const total = parts.length + legs.length;
+          const pendingLeaves = parts.filter((p: any) => p.group_activities?.leave_required && p.status === "Pending").length + 
+                                legs.filter((l: any) => l.leave_required && l.status === "Pending").length;
+          const approvedLeaves = parts.filter((p: any) => p.group_activities?.leave_required && p.status === "Approved").length + 
+                                 legs.filter((l: any) => l.leave_required && l.status === "Approved").length;
+          const pulse = Math.min(Math.round((total / 10) * 100), 100); 
+
+          setStats({ total, pendingLeaves, approvedLeaves, pulse });
+
+          // 4. Fetch Mentor (using the SUID from their most recent group activity's mentor tag)
+          let recentSuid = null;
+          for (const p of parts) {
+            const mentors = (p.group_activities as any)?.activity_mentors;
+            if (mentors && mentors.length > 0) {
+              recentSuid = mentors[0].staff_suid;
+              break;
+            }
+            if (recentSuid) {
+              const { data: staff } = await supabase.from("staff").select("name").eq("suid", recentSuid).single();
               if (staff) setMentor({ name: staff.name, dept: "Faculty Mentor" });
             }
           }

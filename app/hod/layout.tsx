@@ -36,7 +36,7 @@ export default function HODLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[#F5F5F0] flex flex-col md:flex-row overflow-hidden font-sans">
       {/* --- Sidebar --- */}
-      <aside className="w-full md:w-72 bg-[#F5F5F0] p-6 flex flex-col shadow-[8px_0_16px_rgba(0,0,0,0.02)] z-10 border-r border-white/60">
+      <aside className="hidden md:flex w-72 bg-[#F5F5F0] p-6 flex-col shadow-[8px_0_16px_rgba(0,0,0,0.02)] z-10 border-r border-white/60">
         <div className="mb-10 text-center md:text-left">
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
             Cam<span className="text-[#10B981]">Pulse</span>
@@ -73,8 +73,38 @@ export default function HODLayout({ children }: { children: React.ReactNode }) {
         </button>
       </aside>
 
+      {/* --- Mobile Bottom Bar --- */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-[#F5F5F0]/90 backdrop-blur-lg border-t border-white/60 shadow-[0_-8px_16px_rgba(0,0,0,0.05)] z-50 flex justify-around items-center px-2 pb-2">
+        {navLinks.map((link) => {
+          const isActive = pathname === link.href;
+          const Icon = link.icon;
+          return (
+            <button key={link.name} onClick={() => router.push(link.href)} className="relative">
+              <motion.div
+                whileTap={{ scale: 0.9 }}
+                className={`flex flex-col items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-2xl transition-all ${
+                  isActive
+                    ? "bg-[#F5F5F0] text-[#10B981] shadow-[inset_2px_2px_6px_rgba(0,0,0,0.05),inset_-2px_-2px_6px_rgba(255,255,255,0.8)]"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                <Icon size={20} className={isActive ? "text-[#10B981]" : "text-slate-400"} />
+              </motion.div>
+            </button>
+          );
+        })}
+        <button onClick={handleLogout} className="relative">
+          <motion.div
+            whileTap={{ scale: 0.9 }}
+            className="flex flex-col items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-2xl transition-all text-slate-400 hover:text-rose-500"
+          >
+            <LogOut size={20} />
+          </motion.div>
+        </button>
+      </div>
+
       {/* --- Main Content Area --- */}
-      <main className="flex-1 p-6 md:p-10 lg:p-12 overflow-y-auto h-screen">
+      <main className="flex-1 p-6 pb-28 md:pb-10 md:p-10 lg:p-12 overflow-y-auto h-screen relative">
         {children}
       </main>
     </div>

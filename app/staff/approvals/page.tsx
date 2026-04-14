@@ -6,8 +6,10 @@ import { CheckCircle, XCircle, Clock, MapPin, Calendar, FileText, UserCircle, Se
 import { supabase } from "@/app/student/supabase";
 
 type RequestItem = {
+  reactKey: string;
   id: string | number;
   pkColumn: "activity_id" | "id";
+  isNewArchitecture?: boolean;
   uid: string;
   studentName: string;
   title: string;
@@ -27,17 +29,54 @@ export default function PriorityQueuePage() {
       const suid = localStorage.getItem("campuspulse_uid");
       if (!suid) return;
 
-      // Fetch pending activities assigned to this mentor
-      const { data: activities, error } = await supabase
+      // 1. Fetch Old Singular Activities
+      const { data: oldActivities } = await supabase
         .from("student_activities")
         .select("*")
         .eq("suid", suid)
-        .eq("status", "Pending")
-        .order("created_at", { ascending: true }); // Oldest first
+        .eq("status", "Pending");
 
-      if (activities && activities.length > 0) {
+      // 2. Fetch New Group Activities (where this staff is a mentor)
+      const { data: newActivitiesData } = await supabase
+        .from("activity_mentors")
+        .select(`
+          group_activities (
+            id, title, category, start_date, end_date, location, leave_required, description, created_at,
+            activity_participants ( student_uid, status )
+          )
+        `)
+        .eq("staff_suid", suid);
+
+      const newActivities: any[] = [];
+      newActivitiesData?.forEach((ma: any) => {
+        const act = ma.group_activities;
+        if (act && act.activity_participants) {
+          act.activity_participants.forEach((ap: any) => {
+            if (ap.status === "Pending") {
+              newActivities.push({
+                isNewArchitecture: true,
+                id: act.id,
+                uid: ap.student_uid,
+                activity_name: act.title,
+                type: act.category,
+                from_date: act.start_date,
+                to_date: act.end_date,
+                leave_required: act.leave_required,
+                desc: act.description,
+                location: act.location,
+                created_at: act.created_at
+              });
+            }
+          });
+        }
+      });
+
+      // Combine and sort by oldest first
+      const combinedActivities = [...(oldActivities || []), ...newActivities].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+      if (combinedActivities.length > 0) {
         // Fetch student names for the UIDs
-        const uids = [...new Set(activities.map((a: any) => a.uid))];
+        const uids = [...new Set(combinedActivities.map((a: any) => a.uid))];
         const { data: students } = await supabase
           .from("students")
           .select("uid, name")
@@ -50,17 +89,26 @@ export default function PriorityQueuePage() {
         }, {});
 
         // Map the data to match our UI
-        const mapped: RequestItem[] = activities.map((act: any) => ({
-          id: act.activity_id || act.id,
-          pkColumn: act.activity_id ? "activity_id" : "id",
-          uid: act.uid,
-          studentName: studentMap[act.uid] || "Unknown Student",
-          title: act.activity_name,
-          type: act.type,
-          date: `${act.from_date}${act.to_date !== act.from_date ? ` to ${act.to_date}` : ""}`,
-          location: act.leave_required ? "Requires Attendance Leave" : "No Leave Required",
-          desc: act.desc || "No description provided.",
-        }));
+        const mapped: RequestItem[] = combinedActivities.map((act: any) => {
+          const isNew = !!act.isNewArchitecture;
+          const baseId = isNew ? act.id : (act.activity_id || act.id);
+          // Create a unique compound key for group activities since multiple students can have pending requests for the same event!
+          const reactKey = isNew ? `${baseId}-${act.uid}` : String(baseId);
+
+          return {
+            reactKey,
+            id: baseId,
+            pkColumn: isNew ? "id" : (act.activity_id ? "activity_id" : "id"),
+            isNewArchitecture: isNew,
+            uid: act.uid,
+            studentName: studentMap[act.uid] || "Unknown Student",
+            title: act.activity_name,
+            type: act.type,
+            date: `${act.from_date}${act.to_date && act.to_date !== act.from_date ? ` to ${act.to_date}` : ""}`,
+            location: act.leave_required ? "Requires Attendance Leave" : (act.location || "No Leave Required"),
+            desc: act.desc || "No description provided.",
+          };
+        });
         setRequests(mapped);
       }
       setLoading(false);
@@ -69,37 +117,40 @@ export default function PriorityQueuePage() {
     fetchPendingRequests();
   }, []);
 
-  const handleAction = async (id: string | number, action: "approve" | "reject") => {
-    const reqItem = requests.find((r) => r.id === id);
+  const handleAction = async (reactKey: string, action: "approve" | "reject") => {
+    const reqItem = requests.find((r) => r.reactKey === reactKey);
     if (!reqItem) return;
 
     const status = action === "approve" ? "Approved" : "Rejected";
-    const feedback = feedbacks[String(id)] || null;
+    const feedback = feedbacks[reactKey] || null;
 
     try {
       // 1. Update the database
-      const pkColumn = reqItem.pkColumn;
-      const { data, error } = await supabase
-        .from("student_activities")
-        .update({ status, feedback } as { status: string; feedback: string | null })
-        .eq(pkColumn, id)
-        .select();
+      if (reqItem.isNewArchitecture) {
+        const { error } = await supabase
+          .from("activity_participants")
+          .update({ status }) // feedback not yet strictly implemented in the new participant schema!
+          .match({ activity_id: reqItem.id, student_uid: reqItem.uid });
+        
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("student_activities")
+          .update({ status, feedback } as any)
+          .eq(reqItem.pkColumn, reqItem.id);
 
-      if (error) throw error;
-
-      if (!data || data.length === 0) {
-        throw new Error("No rows were updated. This may be due to Row Level Security (RLS) policies blocking the update.");
+        if (error) throw error;
       }
 
       // 2. Remove the item from the local UI queue
-      setRequests((prev) => prev.filter((req) => req.id !== id));
+      setRequests((prev) => prev.filter((req) => req.reactKey !== reactKey));
     } catch (error: any) {
       alert("Error updating request: " + error.message);
     }
   };
 
-  const handleFeedbackChange = (id: string | number, value: string) => {
-    setFeedbacks((prev) => ({ ...prev, [String(id)]: value }));
+  const handleFeedbackChange = (reactKey: string, value: string) => {
+    setFeedbacks((prev) => ({ ...prev, [reactKey]: value }));
   };
 
   return (
@@ -142,7 +193,7 @@ export default function PriorityQueuePage() {
           ) : (
             requests.map((req) => (
               <motion.div 
-                key={req.id}
+                key={req.reactKey}
                 layout
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -202,8 +253,8 @@ export default function PriorityQueuePage() {
                     </div>
                     <textarea 
                       rows={2}
-                      value={feedbacks[req.id] || ""}
-                      onChange={(e) => handleFeedbackChange(req.id, e.target.value)}
+                      value={feedbacks[req.reactKey] || ""}
+                      onChange={(e) => handleFeedbackChange(req.reactKey, e.target.value)}
                       placeholder="Add an optional note to the student..."
                       className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-2xl py-3 pl-12 pr-4 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none resize-none text-sm"
                     />
@@ -214,7 +265,7 @@ export default function PriorityQueuePage() {
                     <motion.button 
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={() => handleAction(req.id, "reject")}
+                      onClick={() => handleAction(req.reactKey, "reject")}
                       className="flex items-center gap-2 px-6 py-4 rounded-2xl bg-[#F5F5F0] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] text-rose-500 hover:bg-rose-500 hover:text-white transition-all font-bold text-sm border border-white/60"
                     >
                       <XCircle size={18} /> Reject
@@ -223,7 +274,7 @@ export default function PriorityQueuePage() {
                     <motion.button 
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={() => handleAction(req.id, "approve")}
+                      onClick={() => handleAction(req.reactKey, "approve")}
                       className="flex items-center gap-2 px-6 py-4 rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all font-bold text-sm"
                     >
                       <CheckCircle size={18} /> Approve

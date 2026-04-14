@@ -2,16 +2,31 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, Variants } from "framer-motion";
-import { FileText, FileSpreadsheet, Download, Filter, Users, Activity, CheckCircle, Clock, XCircle } from "lucide-react";
+import { FileText, FileSpreadsheet, Download, Filter, Users, Activity, CheckCircle, Clock, XCircle, Calendar } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
 import { useRouter } from "next/navigation";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
+// Helper to make dates more compact (e.g., "12 Oct 23")
+const formatShortDate = (dateVal: Date | string | null | undefined) => {
+  if (!dateVal) return "N/A";
+  const date = new Date(dateVal);
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
+};
+
 export default function DataAndReportsPage() {
   const [filterMode, setFilterMode] = useState<"mentees" | "department">("mentees");
   const [reportsData, setReportsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Raw Data & Date Filter States
+  const [rawStudents, setRawStudents] = useState<any[]>([]);
+  const [rawActivities, setRawActivities] = useState<any[]>([]);
+  const [myDivisions, setMyDivisions] = useState<string[]>([]);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
   const router = useRouter();
 
   useEffect(() => {
@@ -25,38 +40,53 @@ export default function DataAndReportsPage() {
       try {
         // Fetch staff divisions to determine who they mentor
         const { data: coords } = await supabase.from("class_coordinators").select("division").eq("suid", suid);
-        const myDivisions = coords?.map(c => c.division) || [];
+        const myDivisionsData = coords?.map(c => c.division) || [];
+        setMyDivisions(myDivisionsData);
 
         // Fetch all students and activities
         const { data: students } = await supabase.from("students").select("uid, name, division");
-        const { data: activities } = await supabase.from("student_activities").select("uid, status");
+        
+        // 1. Fetch Old Singular Activities
+        const { data: oldActivities } = await supabase.from("student_activities").select("id, uid, activity_name, status, created_at");
 
-        if (students && activities) {
-          const mappedReports = students.map(student => {
-            const studentActs = activities.filter(a => a.uid === student.uid);
-            const totalLogs = studentActs.length;
-            const approved = studentActs.filter(a => a.status === "Approved").length;
-            const pending = studentActs.filter(a => a.status === "Pending").length;
-            const rejected = studentActs.filter(a => a.status === "Rejected").length;
-            
-            // Simple engagement metric: 1 log = 10%, capped at 100%
-            const engagementNum = Math.min(Math.round((totalLogs / 10) * 100), 100);
+        // 2. Fetch New Group Activities
+        const { data: participations } = await supabase
+          .from("activity_participants")
+          .select(`
+            status,
+            student_uid,
+            group_activities ( id, title, created_at )
+          `);
 
-            return {
-              uid: student.uid,
-              name: student.name,
-              mentoredByMe: myDivisions.includes(student.division),
-              totalLogs,
-              approved,
-              pending,
-              rejected,
-              engagement: `${engagementNum}%`,
-            };
-          });
+        if (students) {
+          const activities: any[] = [];
 
-          // Sort by highest engagement first
-          mappedReports.sort((a, b) => parseInt(b.engagement) - parseInt(a.engagement));
-          setReportsData(mappedReports);
+          if (oldActivities) {
+            oldActivities.forEach(a => {
+              activities.push({
+                id: String(a.id),
+                uid: a.uid,
+                title: a.activity_name || 'Unknown Activity',
+                status: a.status,
+                created_at: a.created_at
+              });
+            });
+          }
+
+          if (participations) {
+            participations.forEach((p: any) => {
+              activities.push({
+                id: p.group_activities?.id + '-' + p.student_uid,
+                uid: p.student_uid,
+                title: p.group_activities?.title || 'Unknown Activity',
+                status: p.status,
+                created_at: p.group_activities?.created_at
+              });
+            });
+          }
+
+          setRawStudents(students);
+          setRawActivities(activities);
         }
       } catch (error) {
         console.error("Error fetching reports:", error);
@@ -66,6 +96,40 @@ export default function DataAndReportsPage() {
     }
     fetchReports();
   }, [router]);
+
+  // Automatically recalculate report data whenever date filters change
+  useEffect(() => {
+    if (loading || !rawActivities.length || !rawStudents.length) return;
+
+    const studentMap = new Map(rawStudents.map(s => [s.uid, { name: s.name, division: s.division }]));
+
+    const mappedReports = rawActivities.map(activity => {
+      const student = studentMap.get(activity.uid);
+      if (!student) return null;
+
+      // Filter by Date Range
+      if (startDate && new Date(activity.created_at) < new Date(startDate)) return null;
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999); // Inclusive of the end day
+        if (new Date(activity.created_at) > end) return null;
+      }
+
+      return {
+        id: activity.id,
+        title: activity.title,
+        studentName: student.name,
+        studentUid: activity.uid,
+        date: new Date(activity.created_at),
+        status: activity.status,
+        mentoredByMe: myDivisions.includes(student.division),
+      };
+    }).filter(Boolean) as any[];
+
+    // Sort by date descending
+    mappedReports.sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
+    setReportsData(mappedReports);
+  }, [rawStudents, rawActivities, myDivisions, startDate, endDate, loading]);
 
   const displayedData = filterMode === "mentees" 
     ? reportsData.filter(r => r.mentoredByMe) 
@@ -85,23 +149,22 @@ export default function DataAndReportsPage() {
     
     doc.setFontSize(11);
     doc.setTextColor(100);
-    doc.text(`Generated by CampusPulse`, 14, 30);
+    doc.text(`Generated by CamPulse`, 14, 30);
     doc.text(`Scope: ${filterMode === "mentees" ? "My Mentees" : "Entire Department"}`, 14, 36);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 42);
+    doc.text(`Period: ${startDate ? formatShortDate(startDate) : 'All Time'} to ${endDate ? formatShortDate(endDate) : 'Present'}`, 14, 42);
+    doc.text(`Generated on: ${formatShortDate(new Date())}`, 14, 48);
 
     const tableData = displayedData.map(r => [
-      r.name,
-      r.uid,
-      r.totalLogs.toString(),
-      r.approved.toString(),
-      r.pending.toString(),
-      r.rejected.toString(),
-      r.engagement
+      r.title,
+      r.studentName,
+      r.studentUid,
+      formatShortDate(r.date),
+      r.status
     ]);
 
     autoTable(doc, {
-      startY: 48,
-      head: [['Student Name', 'UID', 'Total Logs', 'Approved', 'Pending', 'Rejected', 'Engagement']],
+      startY: 54,
+      head: [['Activity Title', 'Student Name', 'Student UID', 'Date', 'Status']],
       body: tableData,
       theme: 'grid',
       headStyles: { fillColor: [96, 165, 250] }, // CampusPulse Blue (#60A5FA)
@@ -118,16 +181,14 @@ export default function DataAndReportsPage() {
       return;
     }
 
-    const headers = ['Student Name', 'UID', 'Total Logs', 'Approved', 'Pending', 'Rejected', 'Engagement'];
+    const headers = ['Activity Title', 'Student Name', 'Student UID', 'Date', 'Status'];
     
     const csvRows = displayedData.map(r => [
-      `"${r.name}"`, // Quoted to prevent issues if a name contains a comma
-      `"${r.uid}"`,
-      r.totalLogs,
-      r.approved,
-      r.pending,
-      r.rejected,
-      `"${r.engagement}"`
+      `"${r.title}"`,
+      `"${r.studentName}"`,
+      `"${r.studentUid}"`,
+      `"${formatShortDate(r.date)}"`,
+      `"${r.status}"`
     ].join(','));
 
     const csvContent = [headers.join(','), ...csvRows].join('\n');
@@ -159,16 +220,18 @@ export default function DataAndReportsPage() {
     <div className="max-w-5xl mx-auto">
       
       {/* --- Header --- */}
-      <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
+      <div className="mb-8">
           <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-slate-800 tracking-tight">
             Data & <span className="text-[#60A5FA]">Reports</span>
           </h2>
           <p className="text-slate-500 mt-2">Generate and export activity audits for HOD meetings.</p>
-        </div>
+      </div>
 
-        {/* Filter Toggle */}
-        <div className="flex items-center bg-[#F5F5F0] p-2 rounded-full shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] self-start md:self-auto w-full sm:w-auto">
+      {/* --- Controls Bar --- */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-10">
+        
+        {/* Scope Toggle */}
+        <div className="flex items-center bg-[#F5F5F0] p-2 rounded-full shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] w-full lg:w-auto">
           <button 
             onClick={() => setFilterMode("mentees")}
             className={`flex-1 sm:flex-none px-6 py-2.5 rounded-full text-sm font-bold transition-all flex items-center justify-center gap-2 ${filterMode === "mentees" ? 'bg-[#60A5FA] text-white shadow-md shadow-[#60A5FA]/30' : 'text-slate-500 hover:text-slate-700'}`}
@@ -181,6 +244,20 @@ export default function DataAndReportsPage() {
           >
             <Users size={16} /> Entire Dept.
           </button>
+        </div>
+
+        {/* Date Range Pickers */}
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+          <div className="flex items-center gap-2 bg-[#F5F5F0] p-2.5 rounded-full shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] w-full sm:w-auto">
+            <Calendar size={16} className="text-[#60A5FA] ml-3 shrink-0" />
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest shrink-0">From</span>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-transparent border-none outline-none text-sm font-medium text-slate-600 cursor-pointer pr-3 w-full" />
+          </div>
+          <div className="flex items-center gap-2 bg-[#F5F5F0] p-2.5 rounded-full shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] w-full sm:w-auto">
+            <Calendar size={16} className="text-[#60A5FA] ml-3 shrink-0" />
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest shrink-0">To</span>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-transparent border-none outline-none text-sm font-medium text-slate-600 cursor-pointer pr-3 w-full" />
+          </div>
         </div>
       </div>
 
@@ -239,31 +316,28 @@ export default function DataAndReportsPage() {
             {loading && <p className="text-slate-500 font-medium py-4">Loading department analytics...</p>}
             {!loading && displayedData.length === 0 && <p className="text-slate-400 py-4">No records found.</p>}
             
-            {displayedData.map((student) => (
-              <div key={student.uid} className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.03),inset_-4px_-4px_8px_rgba(255,255,255,0.8)]">
+            {displayedData.map((activity) => (
+              <div key={activity.id} className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.03),inset_-4px_-4px_8px_rgba(255,255,255,0.8)]">
                 
                 <div className="flex-1">
-                  <h4 className="font-bold text-slate-700">{student.name}</h4>
-                  <p className="text-xs text-[#60A5FA] font-medium">{student.uid}</p>
+                  <h4 className="font-bold text-slate-700">{activity.title}</h4>
+                  <p className="text-xs text-slate-500 font-medium">By: {activity.studentName} ({activity.studentUid})</p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4 md:gap-8">
-                  <div className="text-center">
-                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Logs</p>
-                    <p className="font-bold text-slate-700">{student.totalLogs}</p>
+                  <div className="text-center min-w-[80px]">
+                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Date</p>
+                <p className="font-bold text-slate-700 text-sm">{formatShortDate(activity.date)}</p>
                   </div>
-                  <div className="text-center">
-                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1 flex items-center justify-center gap-1"><CheckCircle size={10} className="text-emerald-500"/> Appr.</p>
-                    <p className="font-bold text-slate-700">{student.approved}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1 flex items-center justify-center gap-1"><Clock size={10} className="text-[#FDBA74]"/> Pend.</p>
-                    <p className="font-bold text-slate-700">{student.pending}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1 flex items-center justify-center gap-1"><XCircle size={10} className="text-rose-500"/> Rej.</p>
-                    <p className="font-bold text-slate-700">{student.rejected}</p>
-                  </div>
+                  {activity.status === 'Approved' && (
+                    <div className="text-center px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold flex items-center gap-1"><CheckCircle size={12}/> Approved</div>
+                  )}
+                  {activity.status === 'Pending' && (
+                    <div className="text-center px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-bold flex items-center gap-1"><Clock size={12}/> Pending</div>
+                  )}
+                  {activity.status === 'Rejected' && (
+                    <div className="text-center px-3 py-1 bg-rose-100 text-rose-700 rounded-full text-xs font-bold flex items-center gap-1"><XCircle size={12}/> Rejected</div>
+                  )}
                 </div>
               </div>
             ))}

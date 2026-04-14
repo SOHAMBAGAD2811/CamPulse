@@ -19,9 +19,9 @@ const getDateConstraints = () => {
   return { min: toDateTimeLocal(minDate), max: toDateTimeLocal(maxDate) };
 };
 
-export default function StudentEventsPage() {
+export default function StaffEventsPage() {
   const [activeTab, setActiveTab] = useState<"new" | "history">("new");
-  const [studentData, setStudentData] = useState<any>(null);
+  const [staffData, setStaffData] = useState<any>(null);
   const [myProposals, setMyProposals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -55,28 +55,25 @@ export default function StudentEventsPage() {
       const uid = localStorage.getItem("campuspulse_uid");
       if (!uid) return;
 
-      const { data: student, error: studentError } = await supabase
-        .from("students")
+      const { data: staff } = await supabase
+        .from("staff")
         .select("*")
-        .eq("uid", uid)
+        .eq("suid", uid)
         .single();
 
-      if (studentError) throw studentError;
-
-      if (student) {
-        setStudentData(student);
+      if (staff) {
+        setStaffData(staff);
         
-        const { data: proposals, error: proposalsError } = await supabase
+        const { data: proposals } = await supabase
           .from("event_proposals")
           .select("*")
           .eq("organizer_id", uid)
           .order("created_at", { ascending: false });
           
-        if (proposalsError) throw proposalsError;
         if (proposals) setMyProposals(proposals);
       }
-    } catch (error: any) {
-      console.error("Fetch Error:", error.message || error);
+    } catch (error) {
+      console.error("Fetch Error:", error);
     } finally {
       setLoading(false);
     }
@@ -93,8 +90,8 @@ export default function StudentEventsPage() {
     try {
       const payload = {
         ...formData,
-        organizer_id: localStorage.getItem("campuspulse_uid"),
-        department_id: String(studentData.department_id),
+        organizer_id: staffData.suid,
+        department_id: String(staffData.department_id), // Always typecast to String for safety
         expected_footfall: parseInt(formData.expected_footfall) || 0,
         estimated_budget: parseFloat(formData.estimated_budget) || 0,
         start_date: new Date(formData.start_date).toISOString(),
@@ -157,24 +154,18 @@ export default function StudentEventsPage() {
       {/* --- Header --- */}
       <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
         <h2 className="text-3xl md:text-4xl font-bold text-slate-800 tracking-tight flex items-center gap-3">
-          <CalendarPlus className="text-[#A78BFA]" size={36} />
-          Event <span className="text-[#A78BFA]">Proposals</span>
+          <CalendarPlus className="text-[#60A5FA]" size={36} />
+          Faculty Event <span className="text-[#60A5FA]">Proposals</span>
         </h2>
-        <p className="text-slate-500 mt-2">Submit and track your extracurricular event requests.</p>
+        <p className="text-slate-500 mt-2">Submit and track departmental event requests requiring HOD approval.</p>
       </motion.div>
 
       {/* --- Tabs --- */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex gap-4">
-        <button onClick={() => {
-          setActiveTab("new");
-          fetchData();
-        }} className={`px-8 py-3 rounded-full font-bold uppercase tracking-widest text-xs transition-all ${activeTab === "new" ? "bg-[#A78BFA] text-white shadow-lg shadow-[#A78BFA]/30" : "bg-[#F5F5F0] text-slate-500 shadow-[4px_4px_8px_rgba(0,0,0,0.05),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)]"}`}>
+        <button onClick={() => setActiveTab("new")} className={`px-8 py-3 rounded-full font-bold uppercase tracking-widest text-xs transition-all ${activeTab === "new" ? "bg-[#60A5FA] text-white shadow-lg shadow-[#60A5FA]/30" : "bg-[#F5F5F0] text-slate-500 shadow-[4px_4px_8px_rgba(0,0,0,0.05),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)]"}`}>
           New Proposal
         </button>
-        <button onClick={() => {
-          setActiveTab("history");
-          fetchData();
-        }} className={`px-8 py-3 rounded-full font-bold uppercase tracking-widest text-xs transition-all ${activeTab === "history" ? "bg-[#A78BFA] text-white shadow-lg shadow-[#A78BFA]/30" : "bg-[#F5F5F0] text-slate-500 shadow-[4px_4px_8px_rgba(0,0,0,0.05),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)]"}`}>
+        <button onClick={() => setActiveTab("history")} className={`px-8 py-3 rounded-full font-bold uppercase tracking-widest text-xs transition-all ${activeTab === "history" ? "bg-[#60A5FA] text-white shadow-lg shadow-[#60A5FA]/30" : "bg-[#F5F5F0] text-slate-500 shadow-[4px_4px_8px_rgba(0,0,0,0.05),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)]"}`}>
           My Proposals
         </button>
       </motion.div>
@@ -188,43 +179,43 @@ export default function StudentEventsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2 md:col-span-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Event Title</label>
-                <input required type="text" name="title" value={formData.title} onChange={handleInputChange} placeholder="e.g. AI & Machine Learning Workshop" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 placeholder:text-slate-400 border-none" />
+                <input required type="text" name="title" value={formData.title} onChange={handleInputChange} placeholder="e.g. AI & Machine Learning Workshop" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 placeholder:text-slate-400 border-none" />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Event Type</label>
-                <select name="event_type" value={formData.event_type} onChange={handleInputChange} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none cursor-pointer">
+                <select name="event_type" value={formData.event_type} onChange={handleInputChange} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none cursor-pointer">
                   <option>Seminar</option><option>Workshop</option><option>Hackathon</option><option>Cultural</option><option>Sports</option><option>Guest Lecture</option><option>Other</option>
                 </select>
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Club / Committee (Optional)</label>
-                <input type="text" name="club_name" value={formData.club_name} onChange={handleInputChange} placeholder="e.g. Coding Club" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 placeholder:text-slate-400 border-none" />
+                <input type="text" name="club_name" value={formData.club_name} onChange={handleInputChange} placeholder="e.g. Coding Club" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 placeholder:text-slate-400 border-none" />
               </div>
             </div>
 
             {/* Details */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Description / Objective</label>
-              <textarea required name="description" value={formData.description} onChange={handleInputChange} rows={3} placeholder="What is the purpose of this event?" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-3xl py-4 px-5 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 placeholder:text-slate-400 resize-none border-none" />
+              <textarea required name="description" value={formData.description} onChange={handleInputChange} rows={3} placeholder="What is the purpose of this event?" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-3xl py-4 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 placeholder:text-slate-400 resize-none border-none" />
             </div>
 
             {/* Logistics Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Start Date & Time</label>
-                <input required type="datetime-local" min={min} max={max} name="start_date" value={formData.start_date} onChange={handleInputChange} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none" />
+                <input required type="datetime-local" min={min} max={max} name="start_date" value={formData.start_date} onChange={handleInputChange} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">End Date & Time</label>
-                <input required type="datetime-local" min={min} max={max} name="end_date" value={formData.end_date} onChange={handleInputChange} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none" />
+                <input required type="datetime-local" min={min} max={max} name="end_date" value={formData.end_date} onChange={handleInputChange} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Requested Venue</label>
-                <input required type="text" name="venue" value={formData.venue} onChange={handleInputChange} placeholder="e.g. Main Seminar Hall" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none" />
+                <input required type="text" name="venue" value={formData.venue} onChange={handleInputChange} placeholder="e.g. Main Seminar Hall" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Expected Footfall</label>
-                <input required type="number" name="expected_footfall" value={formData.expected_footfall} onChange={handleInputChange} placeholder="e.g. 150" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none" />
+                <input required type="number" name="expected_footfall" value={formData.expected_footfall} onChange={handleInputChange} placeholder="e.g. 150" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
               </div>
             </div>
 
@@ -232,15 +223,15 @@ export default function StudentEventsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Estimated Budget (₹)</label>
-                <input required type="number" name="estimated_budget" value={formData.estimated_budget} onChange={handleInputChange} placeholder="e.g. 5000" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none" />
+                <input required type="number" name="estimated_budget" value={formData.estimated_budget} onChange={handleInputChange} placeholder="e.g. 5000" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Teacher Coordinator</label>
-                <input type="text" name="teacher_coordinator" value={formData.teacher_coordinator} onChange={handleInputChange} placeholder="e.g. Prof. Smith" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 border-none" />
+                <input type="text" name="teacher_coordinator" value={formData.teacher_coordinator} onChange={handleInputChange} placeholder="e.g. Prof. Smith" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
               </div>
             </div>
 
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} disabled={submitting} type="submit" className="w-full bg-[#A78BFA] text-white font-bold py-4 rounded-full shadow-lg shadow-[#A78BFA]/30 hover:shadow-[#A78BFA]/50 transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-70">
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} disabled={submitting} type="submit" className="w-full bg-[#60A5FA] text-white font-bold py-4 rounded-full shadow-lg shadow-[#60A5FA]/30 hover:shadow-[#60A5FA]/50 transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-70">
               <Send size={18} /> {submitting ? "Submitting to HOD..." : "Submit Proposal"}
             </motion.button>
           </form>
@@ -264,14 +255,14 @@ export default function StudentEventsPage() {
                 
                 <div className="space-y-3 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-widest bg-purple-100 text-purple-700 px-3 py-1 rounded-full">{p.event_type}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest bg-blue-100 text-blue-700 px-3 py-1 rounded-full">{p.event_type}</span>
                     <span className="text-[10px] font-bold uppercase tracking-widest bg-slate-200 text-slate-500 px-3 py-1 rounded-full flex items-center gap-1"><Clock size={10}/> {new Date(p.created_at).toLocaleDateString()}</span>
                   </div>
                   <h3 className="text-xl font-bold text-slate-800">{p.title}</h3>
                   <p className="text-sm text-slate-500 line-clamp-2">{p.description}</p>
                   
                   <div className="flex items-center gap-4 text-xs font-semibold text-slate-400 pt-2">
-                    <span className="flex items-center gap-1"><FileText size={14} className="text-blue-400"/> Venue: {p.venue}</span>
+                    <span className="flex items-center gap-1"><FileText size={14} className="text-[#60A5FA]"/> Venue: {p.venue}</span>
                     <span className="flex items-center gap-1"><IndianRupee size={14} className="text-emerald-500"/> Budget: ₹{p.estimated_budget}</span>
                   </div>
                 </div>
