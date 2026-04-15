@@ -335,7 +335,7 @@ export default function LogActivityPage() {
                 checked={formData.leave_required} onChange={e => setFormData({...formData, leave_required: e.target.checked})}
                 className="w-5 h-5 accent-[#A78BFA] bg-[#F5F5F0] rounded outline-none cursor-pointer"
               />
-              <label htmlFor="leave" className="text-sm font-medium text-slate-600 cursor-pointer">Requires Attendance Leave</label>
+              <label htmlFor="leave" className="text-sm font-medium text-slate-600 cursor-pointer">Requires Attendance Leave(Class Work)</label>
             </div>
 
             <motion.button 

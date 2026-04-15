@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence, Variants } from "framer-motion";
-import { Users, Upload, Plus, Edit, ChevronLeft, Activity, CheckCircle, Clock, XCircle, FileSpreadsheet, X, Search } from "lucide-react";
+import { Users, Plus, Edit, ChevronLeft, Activity, CheckCircle, Clock, XCircle, FileSpreadsheet, X, Search, Download, Trash2 } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
 import { useSearchParams, useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
@@ -21,9 +21,24 @@ function MenteeManagementContent() {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<any>(null);
-  const [formData, setFormData] = useState({ uid: "", name: "", division: "", email: "", phone: "" });
+  const [formData, setFormData] = useState({
+    uid: "",
+    name: "",
+    dob: "",
+    gender: "",
+    division: "",
+    semester: "" as number | "",
+    year_id: "",
+    password: "",
+    batch: "",
+  });
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [studentToDelete, setStudentToDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importPayload, setImportPayload] = useState<any[]>([]);
 
   // Drilldown State
   const [studentActivities, setStudentActivities] = useState<any[]>([]);
@@ -106,10 +121,24 @@ function MenteeManagementContent() {
   const handleOpenModal = (student: any = null) => {
     if (student) {
       setEditingStudent(student);
-      setFormData({ uid: student.uid, name: student.name, division: student.division || "", email: student.email || "", phone: student.phone || "" });
+      setFormData({ 
+        uid: student.uid, 
+        name: student.name, 
+        division: student.division || "", 
+        dob: student.dob ? new Date(student.dob).toISOString().split('T')[0] : "",
+        gender: student.gender || "",
+        semester: student.semester || "",
+        year_id: student.year_id || "",
+        password: "", // Don't show existing password for security
+        batch: student.batch || "",
+      });
     } else {
       setEditingStudent(null);
-      setFormData({ uid: "", name: "", division: myDivisions[0] || "", email: "", phone: "" });
+      setFormData({ 
+        uid: "", name: "", division: myDivisions[0] || "", dob: "",
+        gender: "", semester: "", year_id: "", password: "",
+        batch: "",
+      });
     }
     setIsModalOpen(true);
   };
@@ -119,11 +148,28 @@ function MenteeManagementContent() {
     setSaving(true);
     try {
       const payload = {
-        ...formData,
-        department_id: String(staffData.department_id)
+        ...formData, // uid, name, dob, gender, division, semester, year_id, batch, password
+        uid: formData.uid.trim().toUpperCase(),
+        department_id: String(staffData.department_id),
       };
 
-      const { error } = await supabase.from("students").upsert([payload]);
+      // Don't update password if it's empty during an edit
+      if (editingStudent && !payload.password) {
+        delete (payload as any).password;
+      }
+
+      // Clean up empty fields so they are stored as NULL
+      for (const key in payload) {
+        if ((payload as any)[key] === "") {
+          (payload as any)[key] = null;
+        }
+      }
+
+      if (payload.semester) {
+        payload.semester = parseInt(String(payload.semester), 10);
+      }
+
+      const { error } = await supabase.from("students").upsert([payload], { onConflict: 'uid' });
       if (error) throw error;
 
       await fetchMentees();
@@ -135,6 +181,37 @@ function MenteeManagementContent() {
     }
   };
 
+  // --- Delete Student Logic ---
+  const handleDeleteStudent = (uid: string) => {
+    setStudentToDelete(uid);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDeleteStudent = async () => {
+    if (!studentToDelete) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from("students").delete().eq("uid", studentToDelete);
+      if (error) throw error;
+
+      await fetchMentees();
+      setIsDeleteModalOpen(false);
+      setStudentToDelete(null);
+    } catch (error: any) {
+      alert("Error deleting student: " + error.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // --- Download Template Logic ---
+  const handleDownloadTemplate = () => {
+    const headers = ["UID", "Name", "DOB", "Gender", "Division", "Semester", "Year_ID", "Batch", "Password"];
+    const ws = XLSX.utils.aoa_to_sheet([headers]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Students Template");
+    XLSX.writeFile(wb, "student_import_template.xlsx");
+  };
   // --- Bulk Import Logic ---
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -147,28 +224,59 @@ function MenteeManagementContent() {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-      const payload = jsonData.map((row: any) => ({
-        uid: String(row.UID || row.uid || row.Id || row.ID),
-        name: String(row.Name || row.name || row.FullName || ""),
-        division: String(row.Division || row.division || myDivisions[0] || "A"),
-        department_id: String(staffData.department_id)
-      })).filter(s => s.uid && s.uid !== "undefined" && s.name && s.name !== "undefined");
+      const payload = jsonData.map((row: any) => {
+        const studentData: any = {
+          uid: String(row.UID || row.uid || '').trim().toUpperCase(),
+          name: String(row.Name || row.name || '').trim(),
+          division: String(row.Division || row.division || myDivisions[0] || "A").trim(),
+          department_id: String(staffData.department_id),
+          dob: row.DOB || null,
+          gender: row.Gender || null,
+          semester: row.Semester ? parseInt(String(row.Semester), 10) : null,
+          year_id: row.Year_ID || null,
+          batch: row.Batch || null,
+        };
+
+        if (row.Password && String(row.Password).length > 0) {
+          studentData.password = String(row.Password);
+        }
+
+        // Clean up empty strings to be null
+        for (const key in studentData) {
+            if (studentData[key] === '') studentData[key] = null;
+        }
+        return studentData;
+      }).filter(s => s.uid && s.name);
 
       if (payload.length === 0) {
-        alert("No valid rows found. Please ensure your Excel sheet has 'UID', 'Name', and 'Division' columns.");
+        alert("No valid rows found. Please ensure your Excel sheet has at least 'UID' and 'Name' columns, and matches the template format.");
         return;
       }
 
-      const { error } = await supabase.from("students").upsert(payload);
-      if (error) throw error;
-
-      alert(`Successfully imported/updated ${payload.length} students!`);
-      fetchMentees();
+      setImportPayload(payload);
+      setIsImportModalOpen(true);
     } catch (error: any) {
-      alert("Error importing file: " + error.message);
+      alert("Error parsing file: " + error.message);
     } finally {
       setImporting(false);
       e.target.value = ""; // Reset input
+    }
+  };
+
+  const confirmImport = async () => {
+    setImporting(true);
+    try {
+      const { error } = await supabase.from("students").upsert(importPayload, { onConflict: 'uid' });
+      if (error) throw error;
+
+      alert(`Successfully imported/updated ${importPayload.length} students!`);
+      await fetchMentees();
+      setIsImportModalOpen(false);
+      setImportPayload([]);
+    } catch (error: any) {
+      alert("Error importing data: " + error.message);
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -262,6 +370,9 @@ function MenteeManagementContent() {
             </div>
             
             <div className="flex flex-wrap items-center gap-3">
+              <button onClick={handleDownloadTemplate} className="bg-[#F5F5F0] text-slate-600 px-5 py-3 rounded-full font-semibold shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60 hover:text-emerald-500 transition-colors flex items-center gap-2">
+                <Download size={18} /> Download Template
+              </button>
               <label className="cursor-pointer bg-[#F5F5F0] text-slate-600 px-5 py-3 rounded-full font-semibold shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60 hover:text-emerald-500 transition-colors flex items-center gap-2 relative">
                 <FileSpreadsheet size={18} />
                 {importing ? "Importing..." : "Import .xlsx"}
@@ -317,9 +428,14 @@ function MenteeManagementContent() {
                     <button onClick={() => router.push(`/staff/mentees?id=${student.uid}`)} className="text-xs font-bold text-slate-500 hover:text-[#60A5FA] transition-colors flex items-center gap-1">
                       <Activity size={14}/> View Logs
                     </button>
-                    <button onClick={() => handleOpenModal(student)} className="w-8 h-8 rounded-full bg-[#F5F5F0] shadow-[4px_4px_8px_rgba(0,0,0,0.05),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] flex items-center justify-center text-slate-400 hover:text-amber-500 transition-all">
-                      <Edit size={14} />
-                    </button>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleOpenModal(student)} title="Edit Student" className="w-8 h-8 rounded-full bg-[#F5F5F0] shadow-[4px_4px_8px_rgba(0,0,0,0.05),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] flex items-center justify-center text-slate-400 hover:text-amber-500 transition-all">
+                        <Edit size={14} />
+                      </button>
+                      <button onClick={() => handleDeleteStudent(student.uid)} title="Delete Student" className="w-8 h-8 rounded-full bg-[#F5F5F0] shadow-[4px_4px_8px_rgba(0,0,0,0.05),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] flex items-center justify-center text-slate-400 hover:text-rose-500 transition-all">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               );
@@ -346,33 +462,172 @@ function MenteeManagementContent() {
                 </button>
               </div>
 
-              <form onSubmit={handleSaveStudent} className="space-y-4">
+              <form onSubmit={handleSaveStudent} className="space-y-5">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">UID</label>
-                  <input required disabled={!!editingStudent} type="text" value={formData.uid} onChange={e => setFormData({...formData, uid: e.target.value})} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 disabled:opacity-50 border-none" />
+                  <input required disabled={!!editingStudent} type="text" value={formData.uid} onChange={e => setFormData({...formData, uid: e.target.value.toUpperCase()})} placeholder="e.g. 322CE001" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 disabled:opacity-50 border-none" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Full Name</label>
-                  <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Division</label>
-                  <input required type="text" value={formData.division} onChange={e => setFormData({...formData, division: e.target.value})} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
+                  <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Student's full name" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Email</label>
-                    <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Date of Birth</label>
+                    <input type="date" value={formData.dob} onChange={e => setFormData({...formData, dob: e.target.value})} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Phone</label>
-                    <input type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Gender</label>
+                    <select value={formData.gender} onChange={e => setFormData({...formData, gender: e.target.value})} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none appearance-none">
+                      <option value="">Select...</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                    </select>
                   </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Division</label>
+                    <input required type="text" value={formData.division} onChange={e => setFormData({...formData, division: e.target.value})} placeholder="e.g. A" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Semester</label>
+                    <input type="number" value={formData.semester} onChange={e => setFormData({...formData, semester: e.target.value ? parseInt(e.target.value) : ""})} placeholder="e.g. 4" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Year ID</label>
+                    <input type="text" value={formData.year_id} onChange={e => setFormData({...formData, year_id: e.target.value})} placeholder="e.g. SE" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Batch</label>
+                    <input type="text" value={formData.batch} onChange={e => setFormData({...formData, batch: e.target.value})} placeholder="e.g. 2022-2026" className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Password</label>
+                  <input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder={editingStudent ? "Leave blank to keep unchanged" : "Set initial password"} className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 px-5 outline-none focus:ring-2 focus:ring-[#60A5FA]/30 transition-all text-slate-600 border-none" />
                 </div>
                 <motion.button disabled={saving} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" className="w-full bg-[#60A5FA] text-white font-bold py-4 rounded-full shadow-lg shadow-[#60A5FA]/30 hover:shadow-[#60A5FA]/50 transition-all mt-6">
                   {saving ? "Saving..." : "Save Student"}
                 </motion.button>
               </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- Delete Confirmation Modal --- */}
+      <AnimatePresence>
+        {isDeleteModalOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+              className="bg-[#F5F5F0] p-8 rounded-[2.5rem] shadow-2xl border border-white/60 w-full max-w-md text-center"
+            >
+              <div className="w-16 h-16 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 size={32} />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-800 mb-2">Delete Student?</h3>
+              <p className="text-slate-500 mb-8">
+                Are you sure you want to delete student <span className="font-bold text-slate-700">{studentToDelete}</span>? This action cannot be undone.
+              </p>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  disabled={deleting}
+                  className="flex-1 bg-white text-slate-600 font-bold py-4 rounded-full shadow-sm hover:bg-slate-50 transition-all border border-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteStudent}
+                  disabled={deleting}
+                  className="flex-1 bg-rose-500 text-white font-bold py-4 rounded-full shadow-lg shadow-rose-500/30 hover:shadow-rose-500/50 transition-all"
+                >
+                  {deleting ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- Import Confirmation Modal --- */}
+      <AnimatePresence>
+        {isImportModalOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+              className="bg-[#F5F5F0] p-8 rounded-[2.5rem] shadow-2xl border border-white/60 w-full max-w-2xl text-center"
+            >
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FileSpreadsheet size={32} />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-800 mb-2">Confirm Import</h3>
+              <p className="text-slate-500 mb-4">
+                You are about to import or update <span className="font-bold text-slate-700">{importPayload.length}</span> students from the selected file. Do you want to proceed?
+              </p>
+              
+              {importPayload.length > 0 && (
+                <div className="mt-4 mb-8 text-left bg-white/50 rounded-2xl overflow-hidden border border-slate-200/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.03),inset_-4px_-4px_8px_rgba(255,255,255,0.8)]">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-slate-600">
+                      <thead className="bg-[#F5F5F0] border-b border-slate-200/60 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                        <tr>
+                          <th className="px-4 py-3 text-left">UID</th>
+                          <th className="px-4 py-3 text-left">Name</th>
+                          <th className="px-4 py-3 text-left">Division</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200/50">
+                        {importPayload.slice(0, 5).map((student, idx) => (
+                          <tr key={idx} className="hover:bg-white/40 transition-colors">
+                            <td className="px-4 py-3 font-bold text-[#60A5FA]">{student.uid}</td>
+                            <td className="px-4 py-3 font-medium">{student.name}</td>
+                            <td className="px-4 py-3 text-center">
+                              <span className="bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase">{student.division || '-'}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {importPayload.length > 5 && (
+                    <div className="px-4 py-3 bg-[#F5F5F0]/50 text-xs text-center text-slate-500 font-semibold border-t border-slate-200/60">
+                      ... and {importPayload.length - 5} more students
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-4">
+                <button
+                  onClick={() => {
+                    setIsImportModalOpen(false);
+                    setImportPayload([]);
+                  }}
+                  disabled={importing}
+                  className="flex-1 bg-white text-slate-600 font-bold py-4 rounded-full shadow-sm hover:bg-slate-50 transition-all border border-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmImport}
+                  disabled={importing}
+                  className="flex-1 bg-emerald-500 text-white font-bold py-4 rounded-full shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all"
+                >
+                  {importing ? "Importing..." : "Confirm"}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

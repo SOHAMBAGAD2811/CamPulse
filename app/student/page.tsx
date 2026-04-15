@@ -60,17 +60,17 @@ export default function StudentDashboard() {
 
           setStats({ total, pendingLeaves, approvedLeaves, pulse });
 
-          // 4. Fetch Mentor (using the SUID from their most recent group activity's mentor tag)
-          let recentSuid = null;
-          for (const p of parts) {
-            const mentors = (p.group_activities as any)?.activity_mentors;
-            if (mentors && mentors.length > 0) {
-              recentSuid = mentors[0].staff_suid;
-              break;
-            }
-            if (recentSuid) {
-              const { data: staff } = await supabase.from("staff").select("name").eq("suid", recentSuid).single();
-              if (staff) setMentor({ name: staff.name, dept: "Faculty Mentor" });
+          // 4. Fetch Mentor (Class Coordinator via division match)
+          if (student.division) {
+            const { data: coord } = await supabase
+              .from("class_coordinators")
+              .select("suid")
+              .eq("division", student.division)
+              .maybeSingle();
+              
+            if (coord?.suid) {
+              const { data: staff } = await supabase.from("staff").select("name").eq("suid", coord.suid).maybeSingle();
+              if (staff) setMentor({ name: staff.name, dept: "Class Coordinator" });
             }
           }
         }
@@ -141,18 +141,30 @@ export default function StudentDashboard() {
         </motion.div>
 
         {/* 2. CW / Leave Status */}
-        <motion.div variants={itemVars} className="p-6 md:p-8 rounded-[2rem] bg-[#F5F5F0] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60 flex flex-col justify-between">
+        <motion.div 
+          variants={itemVars} 
+          onClick={() => router.push('/student/log')}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          className="p-6 md:p-8 rounded-[2rem] bg-[#F5F5F0] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60 flex flex-col justify-between cursor-pointer"
+        >
           <div className="w-12 h-12 rounded-full bg-[#FDBA74]/10 text-[#FDBA74] flex items-center justify-center shadow-[inset_2px_2px_4px_rgba(0,0,0,0.02),inset_-2px_-2px_4px_rgba(255,255,255,0.5)] mb-6">
             <CalendarClock size={24} />
           </div>
           <div>
-            <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Pending Leaves</p>
-            <h3 className="text-3xl md:text-4xl font-black text-slate-700">{loading ? "-" : stats.pendingLeaves} <span className="text-base md:text-lg text-slate-400 font-medium">/ {loading ? "-" : stats.approvedLeaves} Approved</span></h3>
+            <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Approved/Pending Leaves</p>
+            <h3 className="text-3xl md:text-4xl font-black text-slate-700">{loading ? "-" : stats.approvedLeaves} <span className="text-base md:text-lg text-slate-400 font-medium">/ {loading ? "-" : stats.pendingLeaves}</span></h3>
           </div>
         </motion.div>
 
         {/* 3. Mentor Snapshot */}
-        <motion.div variants={itemVars} className="p-6 md:p-8 rounded-[2rem] bg-[#F5F5F0] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60 flex flex-col justify-between md:col-span-2 lg:col-span-1">
+        <motion.div 
+          variants={itemVars} 
+          onClick={() => router.push('/student/mentorship')}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          className="p-6 md:p-8 rounded-[2rem] bg-[#F5F5F0] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white/60 flex flex-col justify-between md:col-span-2 lg:col-span-1 cursor-pointer"
+        >
           <div className="w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center shadow-[inset_2px_2px_4px_rgba(0,0,0,0.02),inset_-2px_-2px_4px_rgba(255,255,255,0.5)] mb-6">
             <ShieldCheck size={24} />
           </div>
