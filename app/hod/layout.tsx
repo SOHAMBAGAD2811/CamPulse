@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { LayoutDashboard, Users, BookOpen, CalendarCheck, Megaphone, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, BookOpen, CalendarCheck, Megaphone, Database, LogOut } from "lucide-react";
 
 export default function HODLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -29,6 +29,7 @@ export default function HODLayout({ children }: { children: React.ReactNode }) {
     { name: "Staff", href: "/hod/staff", icon: BookOpen },
     { name: "Approvals", href: "/hod/approvals", icon: CalendarCheck },
     { name: "Broadcasts", href: "/hod/broadcasts", icon: Megaphone },
+    { name: "DB Explorer", href: "/hod/db-explorer", icon: Database },
   ];
 
   if (!isMounted) return null;

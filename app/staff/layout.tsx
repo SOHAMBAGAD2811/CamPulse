@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, CheckSquare, Users, BookOpen, FileText, UserCircle, LogOut, ChevronLeft } from "lucide-react";
+import { LayoutDashboard, CheckSquare, Users, BookOpen, FileText, UserCircle, LogOut, ChevronLeft, Database } from "lucide-react";
 import { motion } from "framer-motion";
 import { supabase } from "@/app/student/supabase";
 
@@ -20,6 +20,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
     { name: "Events", path: "/staff/events", icon: UserCircle },
     { name: "My Log", path: "/staff/log", icon: BookOpen },
     { name: "Reports", path: "/staff/reports", icon: FileText },
+    { name: "DB Explorer", path: "/staff/db-explorer", icon: Database },
     { name: "Profile", path: "/staff/profile", icon: UserCircle },
   ];
 
@@ -31,6 +32,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
       "/staff/mentees": "Mentees - CampusPulse",
       "/staff/log": "My Log - CampusPulse",
       "/staff/reports": "Reports - CampusPulse",
+      "/staff/db-explorer": "DB Explorer - CampusPulse",
       "/staff/profile": "Profile - CampusPulse",
     };
     
