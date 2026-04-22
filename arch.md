@@ -9,36 +9,36 @@
 
 ```mermaid
 graph TB
-    subgraph Client["🌐 Client Browser"]
-        LP["Landing Page<br/>(Unified Login)"]
+    subgraph Client["Client Browser"]
+        LP["Landing Page - Unified Login"]
         SP["Student Portal"]
         STP["Staff Portal"]
         HP["HOD Portal"]
         AP["Admin Portal"]
     end
 
-    subgraph NextJS["⚡ Next.js 16 Application (Vercel)"]
+    subgraph NextJS["Next.js 16 Application"]
         direction TB
-        subgraph AppRouter["App Router (File-System Routing)"]
-            RC["Root Layout<br/>layout.tsx"]
-            Pages["Page Components<br/>(Client-Side 'use client')"]
-            Layouts["Portal Layouts<br/>(Auth Guards + Navigation)"]
+        subgraph AppRouter["App Router - File-System Routing"]
+            RC["Root Layout - layout.tsx"]
+            Pages["Page Components - Client Side"]
+            Layouts["Portal Layouts - Auth Guards"]
         end
         subgraph ServerLayer["Server Layer"]
-            SA["Server Actions<br/>supabase-actions.ts"]
-            API["API Routes<br/>/api/pulse-ai/route.ts"]
-            RL["Rate Limiter<br/>lib/rate-limit.ts"]
+            SA["Server Actions - supabase-actions.ts"]
+            API["API Routes - /api/pulse-ai"]
+            RL["Rate Limiter - lib/rate-limit.ts"]
         end
     end
 
-    subgraph External["☁️ External Services"]
-        SB[(Supabase<br/>PostgreSQL + RLS)]
-        GM["Google Gemini API<br/>(PulseAI NLP)"]
+    subgraph External["External Services"]
+        SB[("Supabase - PostgreSQL + RLS")]
+        GM["Google Gemini API - PulseAI NLP"]
         VA["Vercel Analytics"]
     end
 
     Client -->|HTTPS| NextJS
-    SA -->|@supabase/supabase-js| SB
+    SA -->|supabase-js SDK| SB
     Pages -->|Client SDK| SB
     API -->|REST| GM
     API -->|Rate Check| RL
