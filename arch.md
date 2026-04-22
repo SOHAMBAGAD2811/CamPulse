@@ -9,44 +9,45 @@
 
 ```mermaid
 graph TB
-    subgraph Client["🌐 Client Browser"]
-        LP["Landing Page<br/>(Unified Login)"]
+    subgraph Client["Client Browser"]
+        LP["Landing Page - Unified Login"]
         SP["Student Portal"]
         STP["Staff Portal"]
         HP["HOD Portal"]
         AP["Admin Portal"]
     end
 
-    subgraph NextJS["⚡ Next.js 16 Application (Vercel)"]
-        direction TB
-        subgraph AppRouter["App Router (File-System Routing)"]
-            RC["Root Layout<br/>layout.tsx"]
-            Pages["Page Components<br/>(Client-Side 'use client')"]
-            Layouts["Portal Layouts<br/>(Auth Guards + Navigation)"]
-        end
-        subgraph ServerLayer["Server Layer"]
-            SA["Server Actions<br/>supabase-actions.ts"]
-            API["API Routes<br/>/api/pulse-ai/route.ts"]
-            RL["Rate Limiter<br/>lib/rate-limit.ts"]
-        end
+    subgraph AppRouter["App Router"]
+        RC["Root Layout - layout.tsx"]
+        Pages["Page Components - Client Side"]
+        Layouts["Portal Layouts - Auth Guards"]
     end
 
-    subgraph External["☁️ External Services"]
-        SB[(Supabase<br/>PostgreSQL + RLS)]
-        GM["Google Gemini API<br/>(PulseAI NLP)"]
+    subgraph ServerLayer["Server Layer"]
+        SA["Server Actions"]
+        API["API Routes - pulse-ai"]
+        RL["Rate Limiter"]
+    end
+
+    subgraph External["External Services"]
+        SB[("Supabase PostgreSQL")]
+        GM["Google Gemini API"]
         VA["Vercel Analytics"]
     end
 
-    Client -->|HTTPS| NextJS
-    SA -->|@supabase/supabase-js| SB
-    Pages -->|Client SDK| SB
-    API -->|REST| GM
-    API -->|Rate Check| RL
-    SA -->|Rate Check| RL
-    RC -->|Script Tag| VA
+    Client --> AppRouter
+    Client --> ServerLayer
+    AppRouter --> ServerLayer
+    SA --> SB
+    Pages --> SB
+    API --> GM
+    API --> RL
+    SA --> RL
+    RC --> VA
 
     style Client fill:#f5f5f0,stroke:#A78BFA,stroke-width:2px
-    style NextJS fill:#f0f9ff,stroke:#60A5FA,stroke-width:2px
+    style AppRouter fill:#f0f9ff,stroke:#60A5FA,stroke-width:2px
+    style ServerLayer fill:#e0f2fe,stroke:#60A5FA,stroke-width:2px
     style External fill:#ecfdf5,stroke:#10B981,stroke-width:2px
 ```
 
