@@ -1,9 +1,12 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect } from "react";
 import { motion, Variants } from "framer-motion";
 import { FileText, FileSpreadsheet, Download, Filter, Users, Activity, CheckCircle, Clock, XCircle, Calendar } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
+import { fetchStudentsWithDivision } from "@/app/actions/reads";
 import { useRouter } from "next/navigation";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -31,7 +34,7 @@ export default function DataAndReportsPage() {
 
   useEffect(() => {
     async function fetchReports() {
-      const suid = localStorage.getItem("campuspulse_uid");
+      const suid = ((await getSession())?.user as any)?.uid;
       if (!suid) {
         router.replace("/");
         return;
@@ -44,7 +47,7 @@ export default function DataAndReportsPage() {
         setMyDivisions(myDivisionsData);
 
         // Fetch all students and activities
-        const { data: students } = await supabase.from("students").select("uid, name, division");
+        const students = await fetchStudentsWithDivision();
         
         // 1. Fetch Old Singular Activities
         const { data: oldActivities } = await supabase.from("student_activities").select("id, uid, activity_name, status, created_at");

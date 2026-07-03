@@ -1,9 +1,13 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Clock, X, MapPin, Calendar, FileText, ChevronDown, ChevronUp, Briefcase, FileDown, CheckCircle, Trash2 } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
+import { createActivity, deleteActivity } from "@/app/actions/activities";
+import { fetchMyStaffProfile, fetchStaffDirectory, fetchStudentDirectory } from "@/app/actions/reads";
 import { useRouter } from "next/navigation";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -49,16 +53,16 @@ export default function FacultyLogPage() {
   // Protect route: Ensure user is actually Staff
   useEffect(() => {
     const fetchDiaryData = async () => {
-      const suid = localStorage.getItem("campuspulse_uid");
+      const suid = ((await getSession())?.user as any)?.uid;
       if (!suid) {
         router.replace("/");
         return;
       }
       setCurrentUserSuid(suid);
       
-      const { data: staffData, error: staffError } = await supabase.from("staff").select("suid, name").eq("suid", suid).maybeSingle();
-      if (staffError || !staffData) {
-        router.replace("/"); // Not found in staff table, kick them out
+      const staffData = await fetchMyStaffProfile();
+      if (!staffData) {
+        router.replace("/");
         return;
       }
       if (staffData.name) setStaffName(staffData.name);
@@ -80,10 +84,10 @@ export default function FacultyLogPage() {
       setLoadingActivities(false);
 
       // Fetch directories for the Multi-Tag Inputs
-      const { data: allStaff } = await supabase.from("staff").select("suid, name");
+      const allStaff = await fetchStaffDirectory("suid, name");
       if (allStaff) setStaffList(allStaff);
 
-      const { data: allStudents } = await supabase.from("students").select("uid, name");
+      const allStudents = await fetchStudentDirectory("uid, name");
       if (allStudents) setStudentList(allStudents);
     };
     fetchDiaryData();
@@ -110,53 +114,38 @@ export default function FacultyLogPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const suid = localStorage.getItem("campuspulse_uid");
+      const suid = ((await getSession())?.user as any)?.uid;
       if (!suid) {
         alert("Staff User not logged in");
         return;
       }
 
-      const { data: insertedData, error } = await supabase.from("staff_activities").insert([
-        {
-          suid,
-          activity_name: formData.title,
-          type: formData.category,
-          division: formData.division,
-          target_batch: formData.targetBatch,
-          academic_year: formData.academicYear,
-          from_date: formData.fromDate,
-          to_date: formData.toDate,
-          from_time: formData.fromTime,
-          to_time: formData.toTime,
-          location: formData.location,
-          proof_link: formData.proofLink || null,
-          description: formData.description
-        }
-      ]).select();
+      const payload = {
+        suid,
+        activity_name: formData.title,
+        type: formData.category,
+        division: formData.division,
+        target_batch: formData.targetBatch,
+        academic_year: formData.academicYear,
+        from_date: formData.fromDate,
+        to_date: formData.toDate,
+        from_time: formData.fromTime,
+        to_time: formData.toTime,
+        location: formData.location,
+        proof_link: formData.proofLink || null,
+        description: formData.description
+      };
 
-      if (error) throw error;
+      const participantsPayload = formData.participantUids.map(uid => ({
+        student_uid: String(uid)
+      }));
 
-      const activityId = insertedData[0].activity_id;
+      const mentorsPayload = formData.coMentorSuids.map(mSuid => ({
+        staff_suid: String(mSuid)
+      }));
 
-      // Bulk insert co-faculty (peers)
-      if (formData.coMentorSuids.length > 0) {
-        const mentorsPayload = formData.coMentorSuids.map(mSuid => ({
-          activity_id: activityId,
-          staff_suid: String(mSuid)
-        }));
-        const { error: mentorError } = await supabase.from("staff_activity_comentors").insert(mentorsPayload);
-        if (mentorError) throw mentorError;
-      }
-
-      // Bulk insert students involved
-      if (formData.participantUids.length > 0) {
-        const participantsPayload = formData.participantUids.map(uid => ({
-          activity_id: activityId,
-          student_uid: String(uid)
-        }));
-        const { error: partError } = await supabase.from("staff_activity_participants").insert(participantsPayload);
-        if (partError) throw partError;
-      }
+      const result = await createActivity("staff_activities", payload, participantsPayload, mentorsPayload);
+      const insertedData = result.success ? [result.data] : null;
       
       setShowSuccess(true);
 
@@ -178,8 +167,7 @@ export default function FacultyLogPage() {
   const handleDelete = async (activityId: string | number) => {
     if (!window.confirm("Are you sure you want to delete this activity from your diary?")) return;
     try {
-      const { error } = await supabase.from("staff_activities").delete().eq("activity_id", activityId);
-      if (error) throw error;
+      await deleteActivity("staff_activities", String(activityId));
       setActivities(prev => prev.filter(a => a.activity_id !== activityId));
     } catch (error: any) {
       alert("Error deleting activity: " + error.message);

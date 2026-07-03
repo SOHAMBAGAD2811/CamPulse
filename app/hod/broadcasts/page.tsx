@@ -1,9 +1,13 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect } from "react";
 import { motion, Variants, AnimatePresence } from "framer-motion";
 import { Megaphone, Send, Clock, Users, CheckCircle2, Paperclip, X, Link as LinkIcon, Image as ImageIcon, FileText, ExternalLink, Pin, AlertCircle, CalendarClock, ListChecks } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
+import { createBroadcast } from "@/app/actions/broadcasts";
+import { fetchMyHodProfile } from "@/app/actions/reads";
 
 export default function BroadcastsPage() {
   const [hodData, setHodData] = useState<any>(null);
@@ -33,17 +37,11 @@ export default function BroadcastsPage() {
 
   const fetchData = async () => {
     try {
-      const huid = localStorage.getItem("campuspulse_uid");
+      const huid = ((await getSession())?.user as any)?.uid;
       if (!huid) return;
 
       // Fetch HOD details
-      const { data: hodDataResponse, error: hodError } = await supabase
-        .from("hods")
-        .select("*")
-        .eq("huid", huid)
-        .limit(1);
-
-      const hod = hodDataResponse?.[0];
+      const hod = await fetchMyHodProfile();
 
       if (hod) {
         setHodData(hod);
@@ -145,16 +143,12 @@ export default function BroadcastsPage() {
         rsvp_options: hasRsvp ? rsvpOptions.split(',').map(s => s.trim()).filter(Boolean) : null
       };
 
-      const { data, error } = await supabase
-        .from("broadcasts")
-        .insert([newBroadcast])
-        .select()
-        .single();
+      const result = await createBroadcast(newBroadcast);
 
-      if (error) throw error;
-
-      // Add new broadcast to the top of the local list
-      setBroadcasts([data, ...broadcasts].sort((a,b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0)));
+      if (result.success && result.data) {
+        // Add new broadcast to the top of the local list
+        setBroadcasts([result.data, ...broadcasts].sort((a,b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0)));
+      }
       
       // Reset form
       setTitle("");

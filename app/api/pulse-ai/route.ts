@@ -163,7 +163,7 @@ Response: {"table": "students", "filters": [{"column": "year_id", "value": "BE"}
       if (res.status !== 429) {
         // Non-rate-limit error — don't try more models
         return Response.json(
-          { error: `Gemini AI error: ${lastError}` },
+          { error: `CamPulse AI engine error: ${lastError}` },
           { status: 502 }
         );
       }

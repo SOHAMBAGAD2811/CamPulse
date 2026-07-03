@@ -1,4 +1,6 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -12,14 +14,17 @@ export default function HODLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setIsMounted(true);
-    const uid = localStorage.getItem("campuspulse_uid");
-    if (!uid) {
-      router.push("/");
-    }
+    getSession().then(s => { 
+      const uid = (s?.user as any)?.uid; 
+      const role = (s?.user as any)?.role;
+      if (!uid || role !== 'hod') {
+        router.push("/"); 
+      }
+    });
   }, [router]);
 
   const handleLogout = () => {
-    localStorage.removeItem("campuspulse_uid");
+    signOut({ callbackUrl: '/' });
     router.push("/");
   };
 

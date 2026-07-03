@@ -1,9 +1,13 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/student/supabase";
+import { createActivity, deleteActivity } from "@/app/actions/activities";
+import { checkStudentExists, fetchStaffDirectory, fetchStudentDirectory } from "@/app/actions/reads";
 import { Save, ArrowLeft, CheckCircle, Plus, List, Clock, XCircle, Trash2, Calendar } from "lucide-react";
 import MultiTagInput from "../components/MultiTagInput";
 
@@ -55,13 +59,13 @@ export default function LogActivityPage() {
   useEffect(() => {
     // Protect route: Ensure user is actually a Student
     async function verifyStudent() {
-      const uid = localStorage.getItem("campuspulse_uid");
+      const uid = ((await getSession())?.user as any)?.uid;
       if (!uid) {
         router.replace("/");
         return;
       }
-      const { data, error } = await supabase.from("students").select("uid").eq("uid", uid).maybeSingle();
-      if (error || !data) {
+      const data = await checkStudentExists(uid);
+      if (!data) {
         router.replace("/"); // Not found in students table
       } else {
         setCurrentUserUid(uid);
@@ -69,11 +73,11 @@ export default function LogActivityPage() {
     }
 
     async function fetchStaff() {
-      const { data } = await supabase.from("staff").select("suid, name");
+      const data = await fetchStaffDirectory("suid, name");
       if (data) setStaffList(data);
     }
     async function fetchStudents() {
-      const { data } = await supabase.from("students").select("uid, name");
+      const data = await fetchStudentDirectory("uid, name");
       if (data) setStudentList(data);
     }
     verifyStudent();
@@ -84,7 +88,7 @@ export default function LogActivityPage() {
   const fetchActivities = async () => {
     setLoadingHistory(true);
     try {
-      const uid = localStorage.getItem("campuspulse_uid");
+      const uid = ((await getSession())?.user as any)?.uid;
       if (!uid) return;
 
       const { data } = await supabase
@@ -125,48 +129,35 @@ export default function LogActivityPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const uid = localStorage.getItem("campuspulse_uid");
+      const uid = ((await getSession())?.user as any)?.uid;
       if (!uid) {
         router.push("/");
         return;
       }
 
-      // 1. Insert parent activity
-      const { data: event, error: eventError } = await supabase.from("group_activities").insert([
-        {
-          title: formData.title,
-          category: formData.category,
-          description: formData.description,
-          start_date: formData.fromDate,
-          end_date: formData.toDate,
-          from_time: formData.fromTime,
-          to_time: formData.toTime,
-          leave_required: formData.leave_required,
-          created_by: String(uid)
-        }
-      ]).select("id").single();
+      const payload = {
+        title: formData.title,
+        category: formData.category,
+        description: formData.description,
+        start_date: formData.fromDate,
+        end_date: formData.toDate,
+        from_time: formData.fromTime,
+        to_time: formData.toTime,
+        leave_required: formData.leave_required,
+        created_by: String(uid)
+      };
 
-      if (eventError) throw eventError;
-
-      // 2. Bulk insert participants (including the creator)
       const allParticipants = Array.from(new Set([String(uid), ...formData.participantUids]));
       const participantsPayload = allParticipants.map(pUid => ({
-        activity_id: event.id,
         student_uid: String(pUid),
         status: "Pending"
       }));
-      const { error: partError } = await supabase.from("activity_participants").insert(participantsPayload);
-      if (partError) throw partError;
 
-      // 3. Bulk insert mentors
-      if (formData.mentorSuids.length > 0) {
-        const mentorsPayload = formData.mentorSuids.map(mSuid => ({
-          activity_id: event.id,
-          staff_suid: String(mSuid)
-        }));
-        const { error: mentorError } = await supabase.from("activity_mentors").insert(mentorsPayload);
-        if (mentorError) throw mentorError;
-      }
+      const mentorsPayload = formData.mentorSuids.map(mSuid => ({
+        staff_suid: String(mSuid)
+      }));
+
+      await createActivity("group_activities", payload, participantsPayload, mentorsPayload);
       
       setShowSuccess(true);
       setFormData({ ...formData, title: "", description: "", participantUids: [], mentorSuids: [] });
@@ -184,13 +175,7 @@ export default function LogActivityPage() {
   const handleDelete = async (activityId: string) => {
     if (!window.confirm("Are you sure you want to delete this pending activity?")) return;
     try {
-      const uid = localStorage.getItem("campuspulse_uid");
-      const { error } = await supabase
-        .from("activity_participants")
-        .delete()
-        .match({ activity_id: activityId, student_uid: uid });
-
-      if (error) throw error;
+      await deleteActivity("group_activities", activityId);
       setActivities(prev => prev.filter(a => a.id !== activityId));
     } catch (error: any) {
       alert("Error deleting activity: " + error.message);

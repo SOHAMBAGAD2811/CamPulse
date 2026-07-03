@@ -1,10 +1,13 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect } from "react";
 import { motion, Variants } from "framer-motion";
 import { Building, MessageSquare, CheckCircle, XCircle, Clock, ShieldCheck, HelpCircle } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
 import { useRouter } from "next/navigation";
+import { fetchStudentByUid, fetchStaffBySuid } from "@/app/actions/reads";
 
 export default function MentorshipPage() {
   const [mentorInfo, setMentorInfo] = useState<{name: string, department?: string} | null>(null);
@@ -15,18 +18,14 @@ export default function MentorshipPage() {
   useEffect(() => {
     async function fetchMentorshipData() {
       try {
-        const uid = localStorage.getItem("campuspulse_uid");
+        const uid = ((await getSession())?.user as any)?.uid;
         if (!uid) {
           router.replace("/");
           return;
         }
 
         // 1. Fetch student's division
-        const { data: student, error: studentError } = await supabase
-          .from("students")
-          .select("division")
-          .eq("uid", uid)
-          .maybeSingle();
+        const { data: student, error: studentError } = await fetchStudentByUid(uid);
 
         if (studentError || !student) {
           router.replace("/"); // Kicks out staff trying to access student pages
@@ -48,11 +47,7 @@ export default function MentorshipPage() {
 
           if (coordData?.suid) {
             // 3. Fetch the staff details directly
-            const { data: staffData, error: staffError } = await supabase
-              .from("staff")
-              .select("*")
-              .eq("suid", coordData.suid)
-              .maybeSingle();
+            const { data: staffData, error: staffError } = await fetchStaffBySuid(coordData.suid);
             
             if (staffError) console.error("Error fetching staff:", staffError);
             console.log("3. Staff Data:", staffData);

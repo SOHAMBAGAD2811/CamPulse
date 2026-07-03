@@ -1,8 +1,11 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect } from "react";
 import { motion, Variants } from "framer-motion";
 import { CalendarPlus, Send, Clock, FileText, CheckCircle, XCircle, IndianRupee, Trash2 } from "lucide-react";
+import { fetchStaffBySuid } from "@/app/actions/reads";
 import { supabase } from "@/app/student/supabase";
 
 // Helper function for 30-day date constraints
@@ -52,14 +55,11 @@ export default function StaffEventsPage() {
 
   const fetchData = async () => {
     try {
-      const uid = localStorage.getItem("campuspulse_uid");
+      const uid = ((await getSession())?.user as any)?.uid;
       if (!uid) return;
 
-      const { data: staff } = await supabase
-        .from("staff")
-        .select("*")
-        .eq("suid", uid)
-        .single();
+      const { data: staff, error: staffError } = await fetchStaffBySuid(uid);
+      if (staffError) throw new Error(staffError);
 
       if (staff) {
         setStaffData(staff);

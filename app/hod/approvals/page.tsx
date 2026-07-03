@@ -1,9 +1,13 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect } from "react";
 import { motion, Variants } from "framer-motion";
 import { CalendarCheck, CheckCircle, XCircle, Clock, MapPin, IndianRupee, UserCircle, Users, FileText, FileSpreadsheet } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
+import { updateEventStatus } from "@/app/actions/events";
+import { fetchMyHodProfile } from "@/app/actions/reads";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -19,14 +23,10 @@ export default function HODEventsApprovals() {
 
   const fetchData = async () => {
     try {
-      const huid = localStorage.getItem("campuspulse_uid");
+      const huid = ((await getSession())?.user as any)?.uid;
       if (!huid) return;
 
-      const { data: hod } = await supabase
-        .from("hods")
-        .select("*")
-        .eq("huid", huid)
-        .single();
+      const hod = await fetchMyHodProfile();
 
       if (hod) {
         setHodData(hod);
@@ -52,12 +52,7 @@ export default function HODEventsApprovals() {
     if (!window.confirm(confirmMsg)) return;
 
     try {
-      const { error } = await supabase
-        .from("event_proposals")
-        .update({ status: newStatus })
-        .eq("id", id);
-
-      if (error) throw error;
+      await updateEventStatus(id, newStatus);
 
       // Update local state so it immediately moves to the correct tab
       setProposals((prev) => 

@@ -1,10 +1,14 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect } from "react";
 import { motion, Variants } from "framer-motion";
 import { UserCircle, Lock, Shield, Building, Save } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
+import { updatePassword } from "@/app/actions/users";
 import { useRouter } from "next/navigation";
+import { fetchStaffBySuid } from "@/app/actions/reads";
 
 export default function StaffProfilePage() {
   const [newPassword, setNewPassword] = useState("");
@@ -16,20 +20,16 @@ export default function StaffProfilePage() {
   useEffect(() => {
     const fetchStaffProfile = async () => {
       try {
-        const suid = localStorage.getItem("campuspulse_uid");
+        const suid = ((await getSession())?.user as any)?.uid;
         if (!suid) {
           router.replace("/");
           return;
         }
 
-        const { data, error } = await supabase
-          .from("staff")
-          .select("*")
-          .eq("suid", suid)
-          .single();
+        const { data, error } = await fetchStaffBySuid(suid);
 
         if (error) {
-          console.error("Supabase error:", error.message);
+          console.error("Fetch error:", error.message);
         }
         
         if (data) {
@@ -72,15 +72,10 @@ export default function StaffProfilePage() {
 
     setUpdatingPassword(true);
     try {
-      const suid = localStorage.getItem("campuspulse_uid");
+      const suid = ((await getSession())?.user as any)?.uid;
       if (!suid) throw new Error("Staff not found");
 
-      const { error } = await supabase
-        .from("staff")
-        .update({ password: newPassword })
-        .eq("suid", suid);
-
-      if (error) throw error;
+      await updatePassword("staff", newPassword);
 
       alert("Password updated successfully!");
       setNewPassword("");

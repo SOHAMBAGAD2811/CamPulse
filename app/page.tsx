@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { User, Lock, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { supabase } from "@/app/student/supabase";
+import { signIn, getSession } from "next-auth/react";
 
 export default function LandingPage() {
   const [uid, setUid] = useState("");
@@ -25,65 +25,33 @@ export default function LandingPage() {
     try {
       const normalizedId = uid.trim().toUpperCase();
 
-      // 1. Check students table first
-      const { data: student, error: studentError } = await supabase.from("students").select("uid, password").ilike("uid", normalizedId).maybeSingle();
-      if (studentError) {
-        console.error("Student query error:", studentError.message);
-        alert(`DB Error (students): ${studentError.message}`);
-        return;
-      }
-      
-      if (student) {
-        if (student.password && student.password !== password) {
-          alert("Invalid password! Please try again.");
-          return;
-        }
-        localStorage.setItem("campuspulse_uid", student.uid);
-        router.push("/student");
-        return;
-      }
-      
-      // 2. If not a student, check staff table
-      const { data: staff, error: staffError } = await supabase.from("staff").select("suid, password").ilike("suid", normalizedId).maybeSingle();
-      if (staffError) {
-        console.error("Staff query error:", staffError.message);
-        alert(`DB Error (staff): ${staffError.message}`);
-        return;
-      }
-      
-      if (staff) {
-        if (staff.password && staff.password !== password) {
-          alert("Invalid password! Please try again.");
-          return;
-        }
-        localStorage.setItem("campuspulse_uid", staff.suid);
-        router.push("/staff");
-        return;
-      }
-      
-      // 3. If not staff, check hods table
-      const { data: hod, error: hodError } = await supabase.from("hods").select("huid, password").ilike("huid", normalizedId).maybeSingle();
-      if (hodError) {
-        console.error("HOD query error:", hodError.message);
-        alert(`DB Error (hods): ${hodError.message}`);
-        return;
-      }
-      
-      if (hod) {
-        if (hod.password && hod.password !== password) {
-          alert("Invalid password! Please try again.");
-          return;
-        }
-        localStorage.setItem("campuspulse_uid", hod.huid);
-        router.push("/hod");
+      const result = await signIn("credentials", {
+        uid: normalizedId,
+        password: password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        alert(result.error);
+        setLoading(false);
         return;
       }
 
-      alert("User not found! Please ensure your UID/Staff ID exists in the database.");
+      // Securely fetch the session to determine the route
+      const session = await getSession();
+      if (session?.user) {
+        const role = (session.user as any).role;
+        if (role === "student") router.push("/student");
+        else if (role === "staff") router.push("/staff");
+        else if (role === "hod") router.push("/hod");
+        else router.push("/");
+      } else {
+        alert("Session creation failed");
+        setLoading(false);
+      }
     } catch (error) {
       console.error("Login error:", error);
       alert("An error occurred during authentication.");
-    } finally {
       setLoading(false);
     }
   };
@@ -111,9 +79,9 @@ export default function LandingPage() {
         className="lg:w-1/2 space-y-6 mb-12 lg:mb-0 text-center lg:text-left"
       >
         <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold text-slate-800 tracking-tight">
-          Cam<span className="text-[#A78BFA]">Pulse</span>
+          Cam<span className="text-[#7C3AED]">Pulse</span>
         </h1>
-        <p className="text-slate-500 text-lg max-w-md leading-relaxed mx-auto lg:mx-0">
+        <p className="text-slate-600 text-lg max-w-md leading-relaxed mx-auto lg:mx-0">
           The seamless platform for students and staff to coordinate extracurriculars, manage campus events, and sync college life.
         </p>
         
@@ -130,22 +98,23 @@ export default function LandingPage() {
           
           <div className="text-center mb-10">
             <h2 className="text-2xl font-bold text-slate-700">Welcome Back</h2>
-            <p className="text-slate-400 text-sm mt-2">Sign in to your pulse account</p>
+            <p className="text-slate-500 text-sm mt-2">Sign in to your pulse account</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-6">
             {/* UID Input */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">UID / Staff ID / HOD ID</label>
+              <label htmlFor="uid-input" className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-4">UID / Staff ID / HOD ID</label>
               <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                  <User size={18} />
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
+                  <User size={18} aria-hidden="true" />
                 </div>
                 <input 
+                  id="uid-input"
                   type="text"
                   value={uid}
                   onChange={(e) => setUid(e.target.value)}
-                  className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 md:py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
+                  className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 md:py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-[#7C3AED]/30 transition-all text-slate-700 placeholder:text-slate-500 border-none"
                   placeholder="e.g. 322CE001 or E12345"
                   required
                 />
@@ -154,16 +123,17 @@ export default function LandingPage() {
 
             {/* Password Input */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-4">Password</label>
+              <label htmlFor="password-input" className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-4">Password</label>
               <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                  <Lock size={18} />
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
+                  <Lock size={18} aria-hidden="true" />
                 </div>
                 <input 
+                  id="password-input"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 md:py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-600 placeholder:text-slate-300 border-none"
+                  className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] rounded-full py-3 md:py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-[#7C3AED]/30 transition-all text-slate-700 placeholder:text-slate-500 border-none"
                   placeholder="Enter password"
                   required
                 />
@@ -175,15 +145,16 @@ export default function LandingPage() {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               disabled={loading}
-              className="w-full bg-[#A78BFA] text-white font-bold py-3 md:py-4 rounded-full shadow-lg shadow-[#A78BFA]/30 hover:shadow-[#A78BFA]/50 transition-all flex items-center justify-center gap-2 mt-6 md:mt-4"
+              aria-label="Submit login form"
+              className="w-full bg-[#7C3AED] text-white font-bold py-3 md:py-4 rounded-full shadow-lg shadow-[#7C3AED]/30 hover:shadow-[#7C3AED]/50 transition-all flex items-center justify-center gap-2 mt-6 md:mt-4"
             >
               {loading ? "Authenticating..." : "Enter Workspace"}
-              <ArrowRight size={20} />
+              <ArrowRight size={20} aria-hidden="true" />
             </motion.button>
           </form>
 
           {/* Soft Footer Info */}
-          <p className="text-center text-[10px] text-slate-400 mt-8 uppercase tracking-widest leading-loose">
+          <p className="text-center text-[10px] text-slate-500 mt-8 uppercase tracking-widest leading-loose">
             Secured by CamPulse Encryption • v2026
           </p>
         </div>

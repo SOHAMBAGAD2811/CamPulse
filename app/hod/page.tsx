@@ -1,9 +1,13 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useEffect, useState } from "react";
 import { motion, Variants } from "framer-motion";
 import { CalendarCheck, Users, Clock, CheckCircle, XCircle } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
+import { fetchMyHodProfile, fetchStudentsByDepartment } from "@/app/actions/reads";
+import { updateEventStatus } from "@/app/actions/events";
 
 export default function HODDashboard() {
   const [hodData, setHodData] = useState<any>(null);
@@ -18,15 +22,11 @@ export default function HODDashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      const huid = localStorage.getItem("campuspulse_uid");
+      const huid = ((await getSession())?.user as any)?.uid;
       if (!huid) return;
 
       // 1. Fetch HOD details
-      const { data: hod, error: hodError } = await supabase
-        .from("hods")
-        .select("*, departments(department_name)")
-        .eq("huid", huid)
-        .single();
+      const hod = await fetchMyHodProfile();
 
       if (hod) {
         setHodData(hod);
@@ -41,13 +41,10 @@ export default function HODDashboard() {
         if (events) setProposals(events);
 
         // 3. Fetch total students count
-        const { data: sData, error: sError } = await supabase
-          .from("students")
-          .select("*")
-          .eq("department_id", String(hod.department_id));
+        const { data: sData, error: sError } = await fetchStudentsByDepartment(String(hod.department_id));
         
         if (sError) {
-          console.error("Student count error:", sError.message);
+          console.error("Student count error:", sError);
         } else if (sData) {
           console.log("Dashboard Student Count:", sData.length);
           setStudentCount(sData.length);
@@ -75,12 +72,7 @@ export default function HODDashboard() {
     if (!window.confirm(confirmMsg)) return;
 
     try {
-      const { error } = await supabase
-        .from("event_proposals")
-        .update({ status: newStatus })
-        .eq("id", id);
-
-      if (error) throw error;
+      await updateEventStatus(id, newStatus);
 
       // Remove the processed event from the local UI
       setProposals((prev) => prev.filter((p) => p.id !== id));

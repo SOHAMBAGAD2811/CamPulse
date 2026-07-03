@@ -1,8 +1,12 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useEffect, useState } from "react";
 import { Megaphone, Clock, UserCircle, Image as ImageIcon, FileText, Link as LinkIcon, ExternalLink, Pin, AlertCircle, ListChecks } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
+import { fetchStudentByUid } from "@/app/actions/reads";
+import { submitRsvp } from "@/app/actions/broadcasts";
 
 export default function Noticeboard() {
   const [broadcasts, setBroadcasts] = useState<any[]>([]);
@@ -16,19 +20,13 @@ export default function Noticeboard() {
 
   const fetchBroadcasts = async () => {
     try {
-      const uid = localStorage.getItem("campuspulse_uid");
+      const uid = ((await getSession())?.user as any)?.uid;
       if (!uid) return;
 
       // 1. Fetch student's department_id
-      const { data: studentData, error: studentError } = await supabase
-        .from("students")
-        .select("department_id")
-        .eq("uid", uid)
-        .limit(1);
+      const { data: student, error: studentError } = await fetchStudentByUid(uid);
 
-      if (studentError) throw studentError;
-
-      const student = studentData?.[0];
+      if (studentError) throw new Error(studentError);
 
       if (student) {
         // Guard against missing department IDs
@@ -84,18 +82,11 @@ export default function Noticeboard() {
   const handleRsvp = async (broadcastId: string, option: string) => {
     try {
       setVoting(true);
-      const uid = localStorage.getItem("campuspulse_uid");
+      const uid = ((await getSession())?.user as any)?.uid;
       if (!uid) return;
 
-      const { error } = await supabase
-        .from("broadcast_rsvps")
-        .upsert({
-          broadcast_id: broadcastId,
-          user_id: uid,
-          response: option
-        }, { onConflict: 'broadcast_id, user_id' });
+      await submitRsvp(broadcastId, option);
 
-      if (error) throw error;
       setRsvps(prev => ({ ...prev, [broadcastId]: option }));
     } catch (err: any) {
       console.error("RSVP error:", err);

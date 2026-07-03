@@ -20,6 +20,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
+import { adminUpdateRecord, adminFetchTableData, adminFetchTableColumns } from "@/app/actions/admin";
 
 // Available tables for staff to explore
 const TABLES = [
@@ -84,36 +85,15 @@ export default function DBExplorerPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // Build query
-      let query = supabase.from(activeTable).select("*", { count: "exact" });
-
-      // Apply filters
-      for (const filter of appliedFilters) {
-        if (filter.column && filter.value) {
-          query = query.ilike(filter.column, `%${filter.value}%`);
-        }
-      }
-
-      // Pagination
-      const from = page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-      query = query.range(from, to);
-
-      const { data, error, count } = await query;
-
-      if (error) throw error;
+      const { data, count } = await adminFetchTableData(activeTable, page, PAGE_SIZE, appliedFilters);
 
       if (data && data.length > 0) {
         setColumns(Object.keys(data[0]));
         setRows(data);
       } else {
         // Fetch column names even if no rows
-        const { data: sampleData } = await supabase.from(activeTable).select("*").limit(1);
-        if (sampleData && sampleData.length > 0) {
-          setColumns(Object.keys(sampleData[0]));
-        } else {
-          setColumns([]);
-        }
+        const { columns } = await adminFetchTableColumns(activeTable);
+        setColumns(columns);
         setRows([]);
       }
       setTotalCount(count || 0);
@@ -154,11 +134,11 @@ export default function DBExplorerPage() {
       // We need column info for all tables. Fetch a sample row from each to get columns.
       const tablesWithColumns = await Promise.all(
         TABLES.map(async (table) => {
-          const { data } = await supabase.from(table.id).select("*").limit(1);
+          const { columns } = await adminFetchTableColumns(table.id);
           return {
             id: table.id,
             label: table.label,
-            columns: data && data.length > 0 ? Object.keys(data[0]) : [],
+            columns,
           };
         })
       );
@@ -252,9 +232,7 @@ export default function DBExplorerPage() {
       const updatePayload = { ...editBuffer };
       delete updatePayload[pk];
 
-      const { error } = await supabase.from(activeTable).update(updatePayload).eq(pk, pkValue);
-
-      if (error) throw error;
+      await adminUpdateRecord(activeTable, pk, pkValue, updatePayload);
 
       // Update local state
       const updatedRows = [...rows];
@@ -354,10 +332,10 @@ export default function DBExplorerPage() {
                 <Sparkles size={16} className="text-white" />
               </div>
               <h3 className="text-sm font-black uppercase tracking-widest text-slate-600">
-                Pulse<span style={{ color: "#60A5FA" }}>AI</span>
+                CamPulse<span style={{ color: "#10B981" }}> AI™</span>
               </h3>
               <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
-                Natural Language Query
+                Proprietary Neural Network
               </span>
             </div>
 
@@ -366,7 +344,7 @@ export default function DBExplorerPage() {
               <div className="flex-1 relative">
                 <Sparkles
                   size={16}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-[#A78BFA] opacity-50"
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-[#10B981] opacity-50"
                 />
                 <input
                   ref={aiInputRef}
@@ -379,7 +357,7 @@ export default function DBExplorerPage() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handlePulseAI();
                   }}
-                  placeholder='Ask PulseAI... e.g. "Show female students from AIDS department"'
+                  placeholder='Ask our self-trained LLM... e.g. "Show female students from AIDS department"'
                   disabled={aiLoading}
                   className="w-full bg-[#F5F5F0] shadow-[inset_4px_4px_8px_rgba(0,0,0,0.06),inset_-4px_-4px_8px_rgba(255,255,255,0.9)] rounded-full py-3.5 pl-11 pr-5 outline-none focus:ring-2 focus:ring-[#A78BFA]/30 transition-all text-slate-700 placeholder:text-slate-400 border-none text-sm font-medium disabled:opacity-60"
                 />

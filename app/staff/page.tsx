@@ -1,10 +1,13 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect } from "react";
 import { motion, Variants } from "framer-motion";
 import { Users, Clock, Activity, ChevronRight, UserCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/student/supabase";
+import { fetchStaffName, fetchStudentDirectory } from "@/app/actions/reads";
 import Noticeboard from "./components/Noticeboard";
 
 export default function StaffCommandCenter() {
@@ -19,18 +22,18 @@ export default function StaffCommandCenter() {
   useEffect(() => {
     async function fetchDashboardData() {
       try {
-        const loggedInUid = localStorage.getItem("campuspulse_uid");
+        const loggedInUid = ((await getSession())?.user as any)?.uid;
         if (!loggedInUid) {
           router.push("/");
           return;
         }
 
         // 1. Fetch specific logged-in Staff Member
-        const { data: staff } = await supabase.from("staff").select("name").eq("suid", loggedInUid).single();
+        const staff = await fetchStaffName(loggedInUid);
         if (staff) setStaffName(staff.name);
 
         // 2. Fetch Students (Directory of all students)
-        const { data: studentsData } = await supabase.from("students").select("uid, name");
+        const studentsData = await fetchStudentDirectory("uid, name");
 
         // 3. Fetch Activities specifically mapped to this staff member as a mentor
         const { data: mentoredActs } = await supabase
@@ -66,7 +69,7 @@ export default function StaffCommandCenter() {
           });
 
           // Map the students into the UI card format (Limit to 6 for the dashboard preview)
-          const mappedMentees = studentsData.slice(0, 6).map(student => {
+          const mappedMentees = studentsData.slice(0, 6).map((student: any) => {
             const studentActs = activities.filter(a => a.uid === student.uid);
             const hasPending = studentActs.some(a => a.status === "Pending");
             

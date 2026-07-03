@@ -1,10 +1,13 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence, Variants } from "framer-motion";
 import { BookOpen, Search, UserCircle, Briefcase, ShieldCheck, ArrowLeft, Mail, Phone, Users, Calendar, MapPin, FileText, Activity, ChevronLeft } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/app/student/supabase";
+import { fetchMyHodProfile, fetchStaffByDepartment, fetchStaffBySuid, fetchStudentsByDivisions } from "@/app/actions/reads";
 
 // Helper to make dates more compact
 const formatShortDate = (dateString: string) => {
@@ -53,18 +56,14 @@ function HODStaffDirectoryContent() {
   const fetchDirectory = async () => {
     setLoading(true);
     try {
-      const huid = localStorage.getItem("campuspulse_uid");
+      const huid = ((await getSession())?.user as any)?.uid;
       if (!huid) return;
 
-      const { data: hod } = await supabase.from("hods").select("*").eq("huid", huid).single();
+      const hod = await fetchMyHodProfile();
 
       if (hod) {
         setHodData(hod);
-        const { data: staffData } = await supabase
-          .from("staff")
-          .select("*")
-          .eq("department_id", String(hod.department_id))
-          .order("name", { ascending: true });
+        const staffData = await fetchStaffByDepartment(String(hod.department_id));
           
         setStaffList(staffData || []);
         setFilteredStaff(staffData || []);
@@ -83,8 +82,8 @@ function HODStaffDirectoryContent() {
       if (staffMatch) {
         setDrilldownStaff(staffMatch);
       } else {
-        const { data } = await supabase.from("staff").select("*").eq("suid", uid).single();
-        if (data) setDrilldownStaff(data);
+        const data = await fetchStaffBySuid(uid);
+        if (data && data.data) setDrilldownStaff(data.data);
       }
 
       // Fetch Diary
@@ -105,7 +104,7 @@ function HODStaffDirectoryContent() {
       const divisions = coords?.map(c => c.division) || [];
       
       if (divisions.length > 0) {
-        const { data: students } = await supabase.from("students").select("*").in("division", divisions).order("name");
+        const students = await fetchStudentsByDivisions(divisions);
         setMentees(students || []);
       } else {
         setMentees([]);

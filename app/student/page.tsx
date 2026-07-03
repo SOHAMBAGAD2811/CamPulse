@@ -1,10 +1,13 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect } from "react";
 import { motion, Variants } from "framer-motion";
 import { Award, CalendarClock, ShieldCheck, Activity, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/student/supabase";
+import { fetchMyStudentProfile, fetchStaffName } from "@/app/actions/reads";
 import Noticeboard from "./components/Noticeboard";
 
 export default function StudentDashboard() {
@@ -19,14 +22,14 @@ export default function StudentDashboard() {
   useEffect(() => {
     async function fetchStudentData() {
       try {
-        const loggedInUid = localStorage.getItem("campuspulse_uid");
+        const loggedInUid = ((await getSession())?.user as any)?.uid;
         if (!loggedInUid) {
           router.push("/");
           return;
         }
 
         // 1. Fetch the specific logged-in Student
-        const { data: student } = await supabase.from("students").select("*").eq("uid", loggedInUid).single();
+        const student = await fetchMyStudentProfile();
         if (student) setStudentName(student.name);
 
         if (student) {
@@ -69,7 +72,7 @@ export default function StudentDashboard() {
               .maybeSingle();
               
             if (coord?.suid) {
-              const { data: staff } = await supabase.from("staff").select("name").eq("suid", coord.suid).maybeSingle();
+              const staff = await fetchStaffName(coord.suid);
               if (staff) setMentor({ name: staff.name, dept: "Class Coordinator" });
             }
           }

@@ -1,10 +1,13 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence, Variants } from "framer-motion";
 import { Users, Search, UserCircle, GraduationCap, Shield, ChevronLeft, Activity, CheckCircle, Clock, XCircle, Mail, Phone } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/app/student/supabase";
+import { fetchStudentByUid, fetchStudentsByDepartment, fetchMyHodProfile } from "@/app/actions/reads";
 
 function HODStudentsDirectoryContent() {
   const router = useRouter();
@@ -29,33 +32,21 @@ function HODStudentsDirectoryContent() {
 
   const fetchDirectory = async () => {
     try {
-      const huid = localStorage.getItem("campuspulse_uid");
+      const huid = ((await getSession())?.user as any)?.uid;
       if (!huid) return;
 
       // 1. Fetch HOD details to get their department_id
-      const { data: hod, error: hodError } = await supabase
-        .from("hods")
-        .select("*")
-        .eq("huid", huid)
-        .single();
-
-      if (hodError) {
-        console.error("Error fetching HOD data:", hodError.message);
-      }
+      const hod = await fetchMyHodProfile();
 
       if (hod) {
         setHodData(hod);
         
         // 2. Fetch all students in this department
-        const { data: studentsData, error: studentsError } = await supabase
-          .from("students")
-          .select("*")
-          .eq("department_id", String(hod.department_id))
-          .order("name", { ascending: true });
+        const { data: studentsData, error: studentsError } = await fetchStudentsByDepartment(String(hod.department_id));
           
         if (studentsError) {
-          console.error("Error fetching students data:", studentsError.message);
-          alert(`DB Error fetching students: ${studentsError.message}`);
+          console.error("Error fetching students data:", studentsError);
+          alert(`DB Error fetching students: ${studentsError}`);
         }
 
         // 3. Fetch academic years to resolve year_id safely
@@ -68,7 +59,7 @@ function HODStudentsDirectoryContent() {
         }
         
         // Combine data
-        const enrichedStudents = (studentsData || []).map((s) => ({
+        const enrichedStudents = (studentsData || []).map((s: any) => ({
           ...s,
           year_name_resolved: yearMap[s.year_id] || s.year || s.academic_year || "Unknown Year"
         }));
@@ -96,7 +87,7 @@ function HODStudentsDirectoryContent() {
       if (studentMatch) {
         setDrilldownStudent(studentMatch);
       } else {
-        const { data } = await supabase.from("students").select("*").eq("uid", uid).single();
+        const data = await fetchStudentByUid(uid);
         if (data) setDrilldownStudent(data);
       }
 

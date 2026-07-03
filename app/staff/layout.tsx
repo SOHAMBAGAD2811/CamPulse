@@ -1,4 +1,6 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
@@ -42,18 +44,12 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
   // Role-based security check
   useEffect(() => {
     const checkAuth = async () => {
-      const uid = localStorage.getItem('campuspulse_uid');
-      if (!uid) {
+      const session = await getSession();
+      const uid = (session?.user as any)?.uid;
+      const role = (session?.user as any)?.role;
+      if (!uid || role !== 'staff') {
         router.replace('/');
         return;
-      }
-      const { data, error } = await supabase
-        .from('staff')
-        .select('suid')
-        .eq('suid', uid)
-        .single();
-      if (error || !data) {
-        router.replace('/');
       }
     };
     checkAuth();
@@ -124,7 +120,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => localStorage.removeItem("campuspulse_uid")}
+              onClick={() => signOut({ callbackUrl: '/' })}
               className={`w-full flex items-center justify-center ${isCollapsed ? '' : 'gap-2 px-4'} py-3 rounded-2xl text-slate-500 bg-[#F5F5F0] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] hover:text-red-400 transition-colors`}
               title={isCollapsed ? "Sign Out" : undefined}
             >
@@ -159,7 +155,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
         <Link href="/" className="relative">
           <motion.div
             whileTap={{ scale: 0.9 }}
-            onClick={() => localStorage.removeItem("campuspulse_uid")}
+            onClick={() => signOut({ callbackUrl: '/' })}
             className="flex flex-col items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-2xl transition-all text-slate-400 hover:text-rose-500"
           >
             <LogOut size={20} />

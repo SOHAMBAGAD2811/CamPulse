@@ -1,9 +1,13 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence, Variants } from "framer-motion";
 import { Users, Plus, Edit, ChevronLeft, Activity, CheckCircle, Clock, XCircle, FileSpreadsheet, X, Search, Download, Trash2 } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
+import { upsertStudent, deleteStudent } from "@/app/actions/users";
+import { fetchMyStaffProfile, fetchStudentsByDepartment } from "@/app/actions/reads";
 import { useSearchParams, useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 
@@ -58,10 +62,10 @@ function MenteeManagementContent() {
   const fetchMentees = async () => {
     setLoading(true);
     try {
-      const suid = localStorage.getItem("campuspulse_uid");
+      const suid = ((await getSession())?.user as any)?.uid;
       if (!suid) return;
 
-      const { data: staff } = await supabase.from("staff").select("*").eq("suid", suid).single();
+      const staff = await fetchMyStaffProfile();
       if (staff) {
         setStaffData(staff);
 
@@ -70,14 +74,12 @@ function MenteeManagementContent() {
         const divisions = coords?.map(c => c.division) || [];
         setMyDivisions(divisions);
 
-        // Fetch students in the same department (staff can view all, but we highlight mentees)
-        const { data: students } = await supabase
-          .from("students")
-          .select("*")
-          .eq("department_id", String(staff.department_id))
-          .order("name", { ascending: true });
-          
-        if (students) setMentees(students);
+        const { data: students, error: studentsError } = await fetchStudentsByDepartment(String(staff.department_id));
+        if (studentsError) {
+          console.error("Error fetching mentees:", studentsError);
+        } else if (students) {
+          setMentees(students);
+        }
       }
     } catch (error) {
       console.error("Error fetching mentees:", error);
@@ -169,8 +171,7 @@ function MenteeManagementContent() {
         payload.semester = parseInt(String(payload.semester), 10);
       }
 
-      const { error } = await supabase.from("students").upsert([payload], { onConflict: 'uid' });
-      if (error) throw error;
+      await upsertStudent(payload);
 
       await fetchMentees();
       setIsModalOpen(false);
@@ -191,8 +192,7 @@ function MenteeManagementContent() {
     if (!studentToDelete) return;
     setDeleting(true);
     try {
-      const { error } = await supabase.from("students").delete().eq("uid", studentToDelete);
-      if (error) throw error;
+      await deleteStudent(studentToDelete);
 
       await fetchMentees();
       setIsDeleteModalOpen(false);
@@ -266,8 +266,7 @@ function MenteeManagementContent() {
   const confirmImport = async () => {
     setImporting(true);
     try {
-      const { error } = await supabase.from("students").upsert(importPayload, { onConflict: 'uid' });
-      if (error) throw error;
+      await upsertStudent(importPayload);
 
       alert(`Successfully imported/updated ${importPayload.length} students!`);
       await fetchMentees();

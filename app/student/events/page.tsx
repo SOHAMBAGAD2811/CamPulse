@@ -1,9 +1,13 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect } from "react";
 import { motion, Variants } from "framer-motion";
 import { CalendarPlus, Send, Clock, FileText, CheckCircle, XCircle, IndianRupee, Trash2 } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
+import { createEventProposal, deleteEventProposal } from "@/app/actions/events";
+import { fetchStudentByUid } from "@/app/actions/reads";
 
 // Helper function for 30-day date constraints
 const getDateConstraints = () => {
@@ -52,16 +56,12 @@ export default function StudentEventsPage() {
 
   const fetchData = async () => {
     try {
-      const uid = localStorage.getItem("campuspulse_uid");
+      const uid = ((await getSession())?.user as any)?.uid;
       if (!uid) return;
 
-      const { data: student, error: studentError } = await supabase
-        .from("students")
-        .select("*")
-        .eq("uid", uid)
-        .single();
+      const { data: student, error: studentError } = await fetchStudentByUid(uid);
 
-      if (studentError) throw studentError;
+      if (studentError) throw new Error(studentError);
 
       if (student) {
         setStudentData(student);
@@ -93,7 +93,6 @@ export default function StudentEventsPage() {
     try {
       const payload = {
         ...formData,
-        organizer_id: localStorage.getItem("campuspulse_uid"),
         department_id: String(studentData.department_id),
         expected_footfall: parseInt(formData.expected_footfall) || 0,
         estimated_budget: parseFloat(formData.estimated_budget) || 0,
@@ -101,27 +100,23 @@ export default function StudentEventsPage() {
         end_date: new Date(formData.end_date).toISOString(),
       };
 
-      const { data, error } = await supabase
-        .from("event_proposals")
-        .insert([payload])
-        .select()
-        .single();
+      const result = await createEventProposal(payload);
 
-      if (error) throw error;
-
-      setMyProposals([data, ...myProposals]);
-      alert("Event proposal submitted successfully!");
-      setActiveTab("history");
-      
-      // Reset form
-      setFormData({
-        title: "", event_type: "Workshop", club_name: "", description: "",
-        target_audience: "Department Only", expected_footfall: "", guest_speaker: "",
-        teacher_coordinator: "", start_date: "", end_date: "", venue: "",
-        special_requirements: "", estimated_budget: "", budget_breakdown: ""
-      });
-
+      if (result.success && result.data) {
+        setMyProposals([result.data[0], ...myProposals]);
+        alert("Event proposal submitted successfully!");
+        setActiveTab("history");
+        
+        // Reset form
+        setFormData({
+          title: "", event_type: "Workshop", club_name: "", description: "",
+          target_audience: "Department Only", expected_footfall: "", guest_speaker: "",
+          teacher_coordinator: "", start_date: "", end_date: "", venue: "",
+          special_requirements: "", estimated_budget: "", budget_breakdown: ""
+        });
+      }
     } catch (error: any) {
+      console.error("Submit Error:", error);
       alert("Error submitting proposal: " + error.message);
     } finally {
       setSubmitting(false);
@@ -131,8 +126,7 @@ export default function StudentEventsPage() {
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this pending proposal?")) return;
     try {
-      const { error } = await supabase.from("event_proposals").delete().eq("id", id);
-      if (error) throw error;
+      await deleteEventProposal(id);
       setMyProposals((prev) => prev.filter((p) => p.id !== id));
     } catch (error: any) {
       alert("Error deleting proposal: " + error.message);

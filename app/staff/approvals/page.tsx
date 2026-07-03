@@ -1,9 +1,13 @@
 "use client";
+import { getSession, signOut } from "next-auth/react";
+
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, XCircle, Clock, MapPin, Calendar, FileText, UserCircle, Send, MessageSquare } from "lucide-react";
 import { supabase } from "@/app/student/supabase";
+import { approveStudentActivity } from "@/app/actions/activities";
+import { fetchStudentsByUids } from "@/app/actions/reads";
 
 type RequestItem = {
   reactKey: string;
@@ -26,7 +30,7 @@ export default function PriorityQueuePage() {
 
   useEffect(() => {
     async function fetchPendingRequests() {
-      const suid = localStorage.getItem("campuspulse_uid");
+      const suid = ((await getSession())?.user as any)?.uid;
       if (!suid) return;
 
       // 1. Fetch Old Singular Activities
@@ -77,10 +81,7 @@ export default function PriorityQueuePage() {
       if (combinedActivities.length > 0) {
         // Fetch student names for the UIDs
         const uids = [...new Set(combinedActivities.map((a: any) => a.uid))];
-        const { data: students } = await supabase
-          .from("students")
-          .select("uid, name")
-          .in("uid", uids);
+        const { data: students } = await fetchStudentsByUids(uids);
 
         // Create a quick lookup dictionary for student names
         const studentMap = (students || []).reduce((acc: any, curr: any) => {
@@ -126,21 +127,14 @@ export default function PriorityQueuePage() {
 
     try {
       // 1. Update the database
-      if (reqItem.isNewArchitecture) {
-        const { error } = await supabase
-          .from("activity_participants")
-          .update({ status }) // feedback not yet strictly implemented in the new participant schema!
-          .match({ activity_id: reqItem.id, student_uid: reqItem.uid });
-        
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("student_activities")
-          .update({ status, feedback } as any)
-          .eq(reqItem.pkColumn, reqItem.id);
-
-        if (error) throw error;
-      }
+      await approveStudentActivity(
+        reqItem.isNewArchitecture,
+        reqItem.id,
+        reqItem.uid,
+        reqItem.pkColumn,
+        status,
+        feedback
+      );
 
       // 2. Remove the item from the local UI queue
       setRequests((prev) => prev.filter((req) => req.reactKey !== reactKey));
