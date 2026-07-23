@@ -17,7 +17,8 @@ export async function createActivity(table: "group_activities" | "staff_activiti
   const { data: activity, error } = await supabaseServer.from(table).insert([payload]).select().single();
   if (error) throw new Error(error.message);
 
-  const activityId = activity.activity_id;
+  // group_activities uses `id` (UUID) as PK; staff_activities uses `activity_id` (bigint)
+  const activityId = table === "group_activities" ? activity.id : activity.activity_id;
 
   // Insert participants
   if (participants.length > 0) {
@@ -26,7 +27,8 @@ export async function createActivity(table: "group_activities" | "staff_activiti
       ...p,
       activity_id: activityId
     }));
-    await supabaseServer.from(partTable).insert(pPayload);
+    const { error: pErr } = await supabaseServer.from(partTable).insert(pPayload);
+    if (pErr) throw new Error("Participants insert failed: " + pErr.message);
   }
 
   // Insert mentors
@@ -36,7 +38,8 @@ export async function createActivity(table: "group_activities" | "staff_activiti
       ...m,
       activity_id: activityId
     }));
-    await supabaseServer.from(menTable).insert(mPayload);
+    const { error: mErr } = await supabaseServer.from(menTable).insert(mPayload);
+    if (mErr) throw new Error("Mentors insert failed: " + mErr.message);
   }
 
   return { success: true, data: activity };
