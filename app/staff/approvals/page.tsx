@@ -258,7 +258,7 @@ export default function PriorityQueuePage() {
                       {req.proofLink && (
                         <div className="mt-3 pt-3 border-t border-slate-200/50">
                           <p className="text-xs font-bold text-slate-500 mb-1">Attached Proof:</p>
-                          <a href={req.proofLink} target="_blank" rel="noopener noreferrer" className="text-sm text-[#60A5FA] hover:underline font-medium break-all">
+                          <a href={req.proofLink && !/^https?:\/\//i.test(req.proofLink) ? `https://${req.proofLink}` : req.proofLink!} target="_blank" rel="noopener noreferrer" className="text-sm text-[#60A5FA] hover:underline font-medium break-all">
                             {req.proofLink}
                           </a>
                         </div>
