@@ -28,23 +28,22 @@ export default function StaffCommandCenter() {
           return;
         }
 
-        // 1. Fetch specific logged-in Staff Member
-        const staff = await fetchStaffName(loggedInUid);
+        // Fetch Staff Name, Students Directory, and Mentored Activities concurrently
+        const [staff, studentsData, { data: mentoredActs }] = await Promise.all([
+          fetchStaffName(loggedInUid),
+          fetchStudentDirectory("uid, name"),
+          supabase
+            .from("activity_mentors")
+            .select(`
+              group_activities (
+                id, created_at,
+                activity_participants ( student_uid, status )
+              )
+            `)
+            .eq("staff_suid", loggedInUid)
+        ]);
+
         if (staff) setStaffName(staff.name);
-
-        // 2. Fetch Students (Directory of all students)
-        const studentsData = await fetchStudentDirectory("uid, name");
-
-        // 3. Fetch Activities specifically mapped to this staff member as a mentor
-        const { data: mentoredActs } = await supabase
-          .from("activity_mentors")
-          .select(`
-            group_activities (
-              id, created_at,
-              activity_participants ( student_uid, status )
-            )
-          `)
-          .eq("staff_suid", loggedInUid);
 
         const activities: { uid: string, status: string, created_at: string }[] = [];
         mentoredActs?.forEach((ma: any) => {

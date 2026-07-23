@@ -30,19 +30,28 @@ export default function HODDashboard() {
 
       if (hod) {
         setHodData(hod);
-        // 2. Fetch pending event proposals for this HOD's department
-        const { data: events } = await supabase
-          .from("event_proposals")
-          .select("*")
-          .eq("department_id", String(hod.department_id))
-          .eq("status", "pending")
-          .order("created_at", { ascending: false });
-          
+        // Fetch proposals, student count, and approved count concurrently
+        const [
+          { data: events },
+          { data: sData, error: sError },
+          { data: aData, error: aError }
+        ] = await Promise.all([
+          supabase
+            .from("event_proposals")
+            .select("*")
+            .eq("department_id", String(hod.department_id))
+            .eq("status", "pending")
+            .order("created_at", { ascending: false }),
+          fetchStudentsByDepartment(String(hod.department_id)),
+          supabase
+            .from("event_proposals")
+            .select("id")
+            .eq("department_id", String(hod.department_id))
+            .eq("status", "approved")
+        ]);
+
         if (events) setProposals(events);
 
-        // 3. Fetch total students count
-        const { data: sData, error: sError } = await fetchStudentsByDepartment(String(hod.department_id));
-        
         if (sError) {
           console.error("Student count error:", sError);
         } else if (sData) {
@@ -50,13 +59,6 @@ export default function HODDashboard() {
           setStudentCount(sData.length);
         }
 
-        // 4. Fetch approved events count
-        const { data: aData, error: aError } = await supabase
-          .from("event_proposals")
-          .select("id")
-          .eq("department_id", String(hod.department_id))
-          .eq("status", "approved");
-          
         if (aError) console.error("Approved count error:", aError.message);
         if (aData) setApprovedCount(aData.length);
       }

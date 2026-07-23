@@ -35,23 +35,26 @@ export default function PriorityQueuePage() {
       const suid = ((await getSession())?.user as any)?.uid;
       if (!suid) return;
 
-      // 1. Fetch Old Singular Activities
-      const { data: oldActivities } = await supabase
-        .from("student_activities")
-        .select("*")
-        .eq("suid", suid)
-        .in("status", ["Pending", "Proof Submitted"]);
+      // Fetch Old and New Activities concurrently
+      const [oldActivitiesRes, newActivitiesDataRes] = await Promise.all([
+        supabase
+          .from("student_activities")
+          .select("*")
+          .eq("suid", suid)
+          .in("status", ["Pending", "Proof Submitted"]),
+        supabase
+          .from("activity_mentors")
+          .select(`
+            group_activities (
+              id, title, category, start_date, end_date, location, leave_required, description, created_at, proof_link,
+              activity_participants ( student_uid, status )
+            )
+          `)
+          .eq("staff_suid", suid)
+      ]);
 
-      // 2. Fetch New Group Activities (where this staff is a mentor)
-      const { data: newActivitiesData } = await supabase
-        .from("activity_mentors")
-        .select(`
-          group_activities (
-            id, title, category, start_date, end_date, location, leave_required, description, created_at, proof_link,
-            activity_participants ( student_uid, status )
-          )
-        `)
-        .eq("staff_suid", suid);
+      const oldActivities = oldActivitiesRes.data;
+      const newActivitiesData = newActivitiesDataRes.data;
 
       const newActivities: any[] = [];
       newActivitiesData?.forEach((ma: any) => {
