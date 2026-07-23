@@ -56,7 +56,7 @@ export default function StaffCommandCenter() {
         });
 
         if (studentsData) {
-          const pendingCount = activities.filter(a => a.status === "Pending").length;
+          const pendingCount = activities.filter(a => a.status === "Pending" || a.status === "Proof Submitted").length;
           
           const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
           const recentCount = activities.filter(a => new Date(a.created_at) > twentyFourHoursAgo).length;
@@ -70,7 +70,7 @@ export default function StaffCommandCenter() {
           // Map the students into the UI card format (Limit to 6 for the dashboard preview)
           const mappedMentees = studentsData.slice(0, 6).map((student: any) => {
             const studentActs = activities.filter(a => a.uid === student.uid);
-            const hasPending = studentActs.some(a => a.status === "Pending");
+            const hasPending = studentActs.some(a => a.status === "Pending" || a.status === "Proof Submitted");
             
             let lastActive = "No recent activity";
             if (studentActs.length > 0) {

@@ -12,11 +12,7 @@ export async function createActivity(table: "group_activities" | "staff_activiti
   const uid = (session.user as any).uid;
 
   // Insert main activity
-  if (table === "group_activities") {
-    payload.uid = uid; // Enforce owner
-  } else {
-    payload.suid = uid; // Enforce owner
-  }
+  // Ownership is handled via the participant intersection tables, so we do not append uid to the parent payload.
 
   const { data: activity, error } = await supabaseServer.from(table).insert([payload]).select().single();
   if (error) throw new Error(error.message);
