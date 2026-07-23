@@ -21,6 +21,8 @@ type RequestItem = {
   date: string;
   location: string;
   desc: string;
+  status: string;
+  proofLink?: string | null;
 };
 
 export default function PriorityQueuePage() {
@@ -38,14 +40,14 @@ export default function PriorityQueuePage() {
         .from("student_activities")
         .select("*")
         .eq("suid", suid)
-        .eq("status", "Pending");
+        .in("status", ["Pending", "Proof Submitted"]);
 
       // 2. Fetch New Group Activities (where this staff is a mentor)
       const { data: newActivitiesData } = await supabase
         .from("activity_mentors")
         .select(`
           group_activities (
-            id, title, category, start_date, end_date, location, leave_required, description, created_at,
+            id, title, category, start_date, end_date, location, leave_required, description, created_at, proof_link,
             activity_participants ( student_uid, status )
           )
         `)
@@ -56,7 +58,7 @@ export default function PriorityQueuePage() {
         const act = ma.group_activities;
         if (act && act.activity_participants) {
           act.activity_participants.forEach((ap: any) => {
-            if (ap.status === "Pending") {
+            if (ap.status === "Pending" || ap.status === "Proof Submitted") {
               newActivities.push({
                 isNewArchitecture: true,
                 id: act.id,
@@ -68,7 +70,9 @@ export default function PriorityQueuePage() {
                 leave_required: act.leave_required,
                 desc: act.description,
                 location: act.location,
-                created_at: act.created_at
+                created_at: act.created_at,
+                status: ap.status,
+                proof_link: act.proof_link
               });
             }
           });
@@ -96,6 +100,11 @@ export default function PriorityQueuePage() {
           // Create a unique compound key for group activities since multiple students can have pending requests for the same event!
           const reactKey = isNew ? `${baseId}-${act.uid}` : String(baseId);
 
+          let pLink = act.proof_link;
+          if (!isNew && act.feedback && act.feedback.includes("Proof Link: ")) {
+            pLink = act.feedback.split("Proof Link: ")[1];
+          }
+
           return {
             reactKey,
             id: baseId,
@@ -108,6 +117,8 @@ export default function PriorityQueuePage() {
             date: `${act.from_date}${act.to_date && act.to_date !== act.from_date ? ` to ${act.to_date}` : ""}`,
             location: act.leave_required ? "Requires Attendance Leave" : (act.location || "No Leave Required"),
             desc: act.desc || "No description provided.",
+            status: act.status || "Pending",
+            proofLink: pLink,
           };
         });
         setRequests(mapped);
@@ -118,11 +129,17 @@ export default function PriorityQueuePage() {
     fetchPendingRequests();
   }, []);
 
-  const handleAction = async (reactKey: string, action: "approve" | "reject") => {
+  const handleAction = async (reactKey: string, action: "approve" | "reject", currentStatus: string) => {
     const reqItem = requests.find((r) => r.reactKey === reactKey);
     if (!reqItem) return;
 
-    const status = action === "approve" ? "Approved" : "Rejected";
+    let status = "Rejected";
+    if (action === "approve") {
+      if (currentStatus === "Pending") status = "Pending Proof";
+      else if (currentStatus === "Proof Submitted") status = "Approved";
+      else status = "Approved";
+    }
+
     const feedback = feedbacks[reactKey] || null;
 
     try {
@@ -231,9 +248,19 @@ export default function PriorityQueuePage() {
 
                   <div className="bg-[#F5F5F0] p-5 rounded-2xl shadow-[inset_4px_4px_8px_rgba(0,0,0,0.03),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] flex items-start gap-3">
                     <FileText size={18} className="text-slate-400 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-slate-600 leading-relaxed italic">
-                      "{req.desc}"
-                    </p>
+                    <div className="flex-1">
+                      <p className="text-sm text-slate-600 leading-relaxed italic">
+                        "{req.desc}"
+                      </p>
+                      {req.proofLink && (
+                        <div className="mt-3 pt-3 border-t border-slate-200/50">
+                          <p className="text-xs font-bold text-slate-500 mb-1">Attached Proof:</p>
+                          <a href={req.proofLink} target="_blank" rel="noopener noreferrer" className="text-sm text-[#60A5FA] hover:underline font-medium break-all">
+                            {req.proofLink}
+                          </a>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -259,7 +286,7 @@ export default function PriorityQueuePage() {
                     <motion.button 
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={() => handleAction(req.reactKey, "reject")}
+                      onClick={() => handleAction(req.reactKey, "reject", req.status)}
                       className="flex items-center gap-2 px-6 py-4 rounded-2xl bg-[#F5F5F0] shadow-[8px_8px_16px_rgba(0,0,0,0.05),-8px_-8px_16px_rgba(255,255,255,0.8)] text-rose-500 hover:bg-rose-500 hover:text-white transition-all font-bold text-sm border border-white/60"
                     >
                       <XCircle size={18} /> Reject
@@ -268,10 +295,10 @@ export default function PriorityQueuePage() {
                     <motion.button 
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={() => handleAction(req.reactKey, "approve")}
+                      onClick={() => handleAction(req.reactKey, "approve", req.status)}
                       className="flex items-center gap-2 px-6 py-4 rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all font-bold text-sm"
                     >
-                      <CheckCircle size={18} /> Approve
+                      <CheckCircle size={18} /> {req.status === "Pending" ? "Initial Approve" : "Verify Proof"}
                     </motion.button>
                   </div>
                 </div>

@@ -6,9 +6,9 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/student/supabase";
-import { createActivity, deleteActivity } from "@/app/actions/activities";
+import { createActivity, deleteActivity, attachActivityProof } from "@/app/actions/activities";
 import { checkStudentExists, fetchStaffDirectory, fetchStudentDirectory } from "@/app/actions/reads";
-import { Save, ArrowLeft, CheckCircle, Plus, List, Clock, XCircle, Trash2, Calendar } from "lucide-react";
+import { Save, ArrowLeft, CheckCircle, Plus, List, Clock, XCircle, Trash2, Calendar, Link as LinkIcon } from "lucide-react";
 import MultiTagInput from "../components/MultiTagInput";
 
 // Helper function for 15-day date constraints
@@ -39,6 +39,8 @@ export default function LogActivityPage() {
   const [studentList, setStudentList] = useState<{ uid: string; name: string }[]>([]);
   const [currentUserUid, setCurrentUserUid] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
+  const [proofInputId, setProofInputId] = useState<string | null>(null);
+  const [proofUrl, setProofUrl] = useState<string>("");
 
   const { min, max, today } = getDateConstraints();
 
@@ -179,6 +181,23 @@ export default function LogActivityPage() {
       setActivities(prev => prev.filter(a => a.id !== activityId));
     } catch (error: any) {
       alert("Error deleting activity: " + error.message);
+    }
+  };
+
+  const handleAddProof = async (activityId: string) => {
+    if (!proofUrl.trim()) return;
+    try {
+      const uid = ((await getSession())?.user as any)?.uid;
+      if (!uid) return;
+      await attachActivityProof(true, activityId, uid, proofUrl.trim(), 'id');
+      
+      setActivities(prev => prev.map(a => a.id === activityId ? { ...a, status: 'Proof Submitted' } : a));
+      setProofInputId(null);
+      setProofUrl("");
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2000);
+    } catch (err: any) {
+      alert("Error adding proof: " + err.message);
     }
   };
 
@@ -374,11 +393,41 @@ export default function LogActivityPage() {
                             <p className="text-sm text-slate-600 leading-relaxed line-clamp-2">{activity.description}</p>
                           </div>
                         )}
+                        {proofInputId === activity.id && (
+                          <div className="pt-4 mt-4 border-t border-slate-200/50 flex flex-col sm:flex-row gap-3">
+                            <div className="relative flex-1">
+                              <div className="absolute left-3 top-3 text-slate-400">
+                                <LinkIcon size={16} />
+                              </div>
+                              <input
+                                type="url"
+                                placeholder="Paste proof link (e.g. Google Drive, Certificate URL)"
+                                value={proofUrl}
+                                onChange={(e) => setProofUrl(e.target.value)}
+                                className="w-full bg-[#F5F5F0] shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] rounded-xl py-2 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-[#A78BFA]/30 border-none"
+                              />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleAddProof(activity.id)}
+                                className="px-4 py-2 bg-emerald-500 text-white rounded-xl text-sm font-bold shadow-md shadow-emerald-500/20 hover:shadow-emerald-500/40"
+                              >
+                                Submit
+                              </button>
+                              <button
+                                onClick={() => { setProofInputId(null); setProofUrl(""); }}
+                                className="px-4 py-2 bg-[#F5F5F0] text-slate-600 rounded-xl text-sm font-bold shadow-[4px_4px_8px_rgba(0,0,0,0.05),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)]"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Actions */}
-                      {activity.status === 'Pending' && (
-                        <div className="flex flex-col items-end justify-start min-w-[80px] border-t md:border-t-0 md:border-l border-slate-200/50 pt-4 md:pt-0 md:pl-4">
+                      <div className="flex flex-col items-end justify-start min-w-[120px] border-t md:border-t-0 md:border-l border-slate-200/50 pt-4 md:pt-0 md:pl-4 gap-3">
+                        {activity.status === 'Pending' && (
                           <button 
                             onClick={() => handleDelete(activity.id)}
                             className="w-10 h-10 flex items-center justify-center rounded-full bg-[#F5F5F0] shadow-[4px_4px_8px_rgba(0,0,0,0.05),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] text-slate-400 hover:text-rose-500 transition-all"
@@ -386,8 +435,16 @@ export default function LogActivityPage() {
                           >
                             <Trash2 size={16} />
                           </button>
-                        </div>
-                      )}
+                        )}
+                        {activity.status === 'Pending Proof' && proofInputId !== activity.id && (
+                          <button
+                            onClick={() => setProofInputId(activity.id)}
+                            className="px-4 py-2 w-full text-xs font-bold rounded-xl bg-[#A78BFA] text-white shadow-lg shadow-[#A78BFA]/30 hover:shadow-[#A78BFA]/50 transition-all text-center"
+                          >
+                            Add Proof
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </motion.div>
                 ))}

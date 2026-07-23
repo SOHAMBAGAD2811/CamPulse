@@ -109,3 +109,42 @@ export async function approveStudentActivity(
   }
   return { success: true };
 }
+
+// 5. Attach Proof to Activity (Student)
+export async function attachActivityProof(
+  isNewArchitecture: boolean | undefined,
+  activityId: string | number,
+  studentUid: string,
+  proofLink: string,
+  pkColumn: string
+) {
+  const session = await getServerSession(authOptions);
+  if (!session) throw new Error("Unauthorized");
+
+  if (isNewArchitecture) {
+    // 1. Update proof_link in group_activities
+    const { error: proofError } = await supabaseServer
+      .from("group_activities")
+      .update({ proof_link: proofLink })
+      .eq("id", activityId);
+    if (proofError) throw new Error(proofError.message);
+
+    // 2. Update status in activity_participants to 'Proof Submitted'
+    const { error: statusError } = await supabaseServer
+      .from("activity_participants")
+      .update({ status: "Proof Submitted" })
+      .match({ activity_id: activityId, student_uid: studentUid });
+    if (statusError) throw new Error(statusError.message);
+  } else {
+    // Legacy: Store proof link in feedback, or we could just skip if legacy doesn't support it well, but let's just append to feedback
+    const { error } = await supabaseServer
+      .from("student_activities")
+      .update({ 
+        status: "Proof Submitted",
+        feedback: "Proof Link: " + proofLink
+      })
+      .eq(pkColumn, activityId);
+    if (error) throw new Error(error.message);
+  }
+  return { success: true };
+}
