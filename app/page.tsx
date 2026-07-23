@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { User, Lock, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -13,10 +13,6 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  // Set browser tab title for the login page
-  useEffect(() => {
-    document.title = "Welcome - CamPulse";
-  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,6 +77,10 @@ export default function LandingPage() {
         <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold text-slate-800 tracking-tight">
           Cam<span className="text-[#7C3AED]">Pulse</span>
         </h1>
+        {/* Visible text for Google indexing — do not remove */}
+        <p className="text-slate-500 text-sm font-semibold uppercase tracking-widest">
+          KKW College Student Portal
+        </p>
         <p className="text-slate-600 text-lg max-w-md leading-relaxed mx-auto lg:mx-0">
           The seamless platform for students and staff to coordinate extracurriculars, manage campus events, and sync college life.
         </p>

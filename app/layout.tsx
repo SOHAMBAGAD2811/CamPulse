@@ -10,22 +10,27 @@ export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
 
   title: {
-    default: "CamPulse — Campus Life, Coordinated",
-    template: "%s | CamPulse",
+    default: "CamPulse KKW – Student Portal for KKW College",
+    template: "%s | CamPulse KKW",
   },
   description:
-    "CamPulse is the all-in-one platform for students and staff to coordinate extracurriculars, manage campus events, track activity logs, and sync college life seamlessly.",
+    "CamPulse KKW – Official student and staff portal for KKW College. Login to access attendance, notices, extracurricular management, campus events, and academic resources.",
   keywords: [
     "CamPulse",
+    "CamPulse KKW",
+    "KKW CamPulse",
+    "KKW College student portal",
+    "KKW College",
     "campus management",
     "student portal",
     "extracurricular management",
     "college event management",
-    "KKW college",
     "student activities",
     "staff portal",
     "HOD approvals",
     "college platform",
+    "KKW login",
+    "CamPulse login",
   ],
   authors: [{ name: "CamPulse", url: BASE_URL }],
   creator: "CamPulse",
@@ -53,16 +58,16 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_IN",
     url: BASE_URL,
-    siteName: "CamPulse",
-    title: "CamPulse — Campus Life, Coordinated",
+    siteName: "CamPulse KKW",
+    title: "CamPulse KKW – Student Portal for KKW College",
     description:
-      "The all-in-one platform for students and staff to coordinate extracurriculars, manage campus events, and sync college life.",
+      "Official student and staff portal for KKW College. Login to access attendance, notices, extracurricular management, and campus events.",
     images: [
       {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "CamPulse — Campus Life, Coordinated",
+        alt: "CamPulse KKW – Student Portal for KKW College",
         type: "image/png",
       },
     ],
@@ -70,9 +75,9 @@ export const metadata: Metadata = {
 
   twitter: {
     card: "summary_large_image",
-    title: "CamPulse — Campus Life, Coordinated",
+    title: "CamPulse KKW – Student Portal for KKW College",
     description:
-      "The all-in-one platform for students and staff to coordinate extracurriculars, manage campus events, and sync college life.",
+      "Official student and staff portal for KKW College. Login to access attendance, notices, extracurricular management, and campus events.",
     images: ["/og-image.png"],
     creator: "@campulse",
   },
